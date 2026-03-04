@@ -1,0 +1,14 @@
+=== openapi/user-service.yaml ===
+openapi/user-service.yaml is valid
+=== openapi/ride-service.yaml ===
+openapi/ride-service.yaml is valid
+=== openapi/bike-inventory-service.yaml ===
+openapi/bike-inventory-service.yaml is valid
+=== openapi/payment-service.yaml ===
+openapi/payment-service.yaml is valid
+=== openapi/partner-analytics-service.yaml ===
+openapi/partner-analytics-service.yaml is valid
+=== openapi/api-gateway-service.yaml ===
+openapi/api-gateway-service.yaml is valid
+=== openapi/database-cluster-service.yaml ===
+openapi/database-cluster-service.yaml is valid

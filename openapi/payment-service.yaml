@@ -1,0 +1,205 @@
+openapi: 3.0.3
+info:
+  title: Payment Service API
+  version: 1.0.0
+  description: Internal billing APIs for ride charging and reporting.
+servers:
+  - url: http://localhost:3004
+paths:
+  /status:
+    get:
+      summary: Service health status
+      responses:
+        '200':
+          description: Payment service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceStatus'
+
+  /internal/payments/charge:
+    post:
+      summary: Create or return an idempotent charge
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChargeRequest'
+      responses:
+        '201':
+          description: Charge created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '200':
+          description: Existing idempotent charge returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/payments/{paymentId}:
+    parameters:
+      - $ref: '#/components/parameters/PaymentIdPath'
+    get:
+      summary: Fetch one payment by ID
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      responses:
+        '200':
+          description: Payment found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          description: Payment does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/users/{userId}/billing-summary:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      summary: Aggregate billing summary for one user
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      responses:
+        '200':
+          description: Summary returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSummary'
+
+components:
+  parameters:
+    PaymentIdPath:
+      in: path
+      name: paymentId
+      required: true
+      schema:
+        type: string
+    UserIdPath:
+      in: path
+      name: userId
+      required: true
+      schema:
+        type: string
+
+  securitySchemes:
+    serviceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    internalMtls:
+      type: apiKey
+      in: header
+      name: x-internal-mtls
+      description: Local development simulation for mTLS.
+
+  schemas:
+    ServiceStatus:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: payment-service
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+              oneOf:
+                - type: object
+                - type: array
+                  items: {}
+                - type: string
+
+    ChargeRequest:
+      type: object
+      required: [userId, rideId, amount, currency, paymentBindingId, idempotencyKey]
+      properties:
+        userId:
+          type: string
+        rideId:
+          type: string
+        amount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          example: GBP
+        paymentBindingId:
+          type: string
+        idempotencyKey:
+          type: string
+          minLength: 8
+
+    PaymentResponse:
+      type: object
+      required: [paymentId, userId, rideId, amount, currency, status, createdAt]
+      properties:
+        paymentId:
+          type: string
+        userId:
+          type: string
+        rideId:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [charged, refunded]
+        createdAt:
+          type: string
+          format: date-time
+
+    BillingSummary:
+      type: object
+      required: [userId, currency, totalCharged, paymentCount]
+      properties:
+        userId:
+          type: string
+        currency:
+          type: string
+          example: GBP
+        totalCharged:
+          type: number
+        paymentCount:
+          type: integer
+          minimum: 0

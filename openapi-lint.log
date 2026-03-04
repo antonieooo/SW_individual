@@ -1,0 +1,80 @@
+=== openapi/user-service.yaml ===
+Swagger schema validation failed.
+  #/components/securitySchemes/mutualTLS must have required property '$ref'
+  #/components/securitySchemes/mutualTLS must have required property 'name'
+  #/components/securitySchemes/mutualTLS must have required property 'in'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must have required property 'scheme'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'flows'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'openIdConnectUrl'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+
+=== openapi/ride-service.yaml ===
+Swagger schema validation failed.
+  #/components/securitySchemes/mutualTLS must have required property '$ref'
+  #/components/securitySchemes/mutualTLS must have required property 'name'
+  #/components/securitySchemes/mutualTLS must have required property 'in'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must have required property 'scheme'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'flows'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'openIdConnectUrl'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+
+=== openapi/bike-inventory-service.yaml ===
+Swagger schema validation failed.
+  #/components/securitySchemes/mutualTLS must have required property '$ref'
+  #/components/securitySchemes/mutualTLS must have required property 'name'
+  #/components/securitySchemes/mutualTLS must have required property 'in'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must have required property 'scheme'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'flows'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'openIdConnectUrl'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+
+=== openapi/payment-service.yaml ===
+Swagger schema validation failed.
+  #/components/securitySchemes/mutualTLS must have required property '$ref'
+  #/components/securitySchemes/mutualTLS must have required property 'name'
+  #/components/securitySchemes/mutualTLS must have required property 'in'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must have required property 'scheme'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'flows'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'openIdConnectUrl'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+
+=== openapi/partner-analytics-service.yaml ===
+Swagger schema validation failed.
+  #/components/securitySchemes/mutualTLS must have required property '$ref'
+  #/components/securitySchemes/mutualTLS must have required property 'name'
+  #/components/securitySchemes/mutualTLS must have required property 'in'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must have required property 'scheme'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'flows'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must have required property 'openIdConnectUrl'
+  #/components/securitySchemes/mutualTLS/type must be equal to one of the allowed values
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+  #/components/securitySchemes/mutualTLS must match exactly one schema in oneOf
+

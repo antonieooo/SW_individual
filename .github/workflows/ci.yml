@@ -1,0 +1,11 @@
+# This file is intentionally empty.
+# You must design and implement their own CI workflow
+# according to your architecture and testing strategy.
+
+name: CityBike CI
+
+on:
+  push:
+  pull_request:
+
+jobs: {}

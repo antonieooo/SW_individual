@@ -1,0 +1,50 @@
+openapi: 3.0.3
+info:
+  title: Database Cluster Service API
+  version: 1.0.0
+  description: In-memory schema store and analytics aggregation service.
+servers:
+  - url: http://localhost:3006
+paths:
+  /status:
+    get:
+      summary: DB cluster health
+      responses:
+        '200':
+          description: Healthy
+
+  /internal/db/{schema}/{collection}/get:
+    post:
+      summary: Get one record by id
+      parameters:
+        - in: path
+          name: schema
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Record returned
+
+  /internal/db/{schema}/{collection}/upsert:
+    post:
+      summary: Upsert one record
+      parameters:
+        - in: path
+          name: schema
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Record persisted

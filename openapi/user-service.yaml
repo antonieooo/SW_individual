@@ -1,0 +1,330 @@
+openapi: 3.0.3
+info:
+  title: User Service API
+  version: 1.0.0
+  description: Internal identity and profile endpoints consumed through the API gateway.
+servers:
+  - url: http://localhost:3001
+paths:
+  /status:
+    get:
+      summary: Service health status
+      responses:
+        '200':
+          description: User service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceStatus'
+
+  /internal/auth/login:
+    post:
+      summary: Validate user credentials for gateway login flow
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Credentials valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Credentials invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/users/{userId}/profile:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      summary: Fetch profile data for one user
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      responses:
+        '200':
+          description: Profile found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      summary: Update mutable profile fields
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfilePatch'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/users/{userId}/payment-binding:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      summary: Get masked payment binding information
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      responses:
+        '200':
+          description: Binding data returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentBindingResponse'
+        '404':
+          description: User does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/users/{userId}/dashboard:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      summary: Aggregate profile, ride summary, and billing summary
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      responses:
+        '200':
+          description: Dashboard assembled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDashboardResponse'
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  parameters:
+    UserIdPath:
+      in: path
+      name: userId
+      required: true
+      schema:
+        type: string
+
+  securitySchemes:
+    serviceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Signed internal token issued by API Gateway or trusted internal service.
+    internalMtls:
+      type: apiKey
+      in: header
+      name: x-internal-mtls
+      description: Local development simulation for mTLS.
+
+  schemas:
+    ServiceStatus:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: user-service
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+              oneOf:
+                - type: object
+                - type: array
+                  items: {}
+                - type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+
+    LoginResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          type: object
+          required: [id, role, email, name]
+          properties:
+            id:
+              type: string
+            role:
+              type: string
+              enum: [user, maintainer]
+            email:
+              type: string
+              format: email
+            name:
+              type: string
+
+    UserProfile:
+      type: object
+      required: [id, role, email, name, phone]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [user, maintainer]
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+
+    UserProfilePatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+          minLength: 3
+
+    PaymentBindingResponse:
+      type: object
+      required: [userId, paymentBindingId, status]
+      properties:
+        userId:
+          type: string
+        paymentBindingId:
+          type: string
+        status:
+          type: string
+          enum: [valid, suspended]
+
+    RideSummaryItem:
+      type: object
+      required: [rideId, bikeId, status, startedAt]
+      properties:
+        rideId:
+          type: string
+        bikeId:
+          type: string
+        status:
+          type: string
+          enum: [active, completed]
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    BillingSummary:
+      type: object
+      required: [currency, totalCharged, paymentCount]
+      properties:
+        currency:
+          type: string
+          example: GBP
+        totalCharged:
+          type: number
+          format: float
+        paymentCount:
+          type: integer
+          minimum: 0
+
+    UserDashboardResponse:
+      type: object
+      required: [profile, recentRides, billingSummary]
+      properties:
+        profile:
+          $ref: '#/components/schemas/UserProfile'
+        recentRides:
+          type: array
+          items:
+            $ref: '#/components/schemas/RideSummaryItem'
+        billingSummary:
+          $ref: '#/components/schemas/BillingSummary'

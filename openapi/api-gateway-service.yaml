@@ -1,0 +1,62 @@
+openapi: 3.0.3
+info:
+  title: API Gateway Service API
+  version: 1.0.0
+  description: Single external entrypoint for users, devices, maintainers, and partners.
+servers:
+  - url: http://localhost:3000
+paths:
+  /status:
+    get:
+      summary: Gateway health
+      responses:
+        '200':
+          description: Healthy
+
+  /api/v1/auth/login:
+    post:
+      summary: User or maintainer login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login success
+
+  /api/v1/rides/start:
+    post:
+      summary: Start ride
+      security:
+        - userJwt: []
+      responses:
+        '201':
+          description: Ride started
+
+  /api/v1/partner/reports/daily-usage:
+    get:
+      summary: Partner analytics query
+      security:
+        - partnerApiKey: []
+      responses:
+        '200':
+          description: Report returned
+
+components:
+  securitySchemes:
+    userJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    partnerApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key

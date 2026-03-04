@@ -1,0 +1,268 @@
+openapi: 3.0.3
+info:
+  title: Bike Inventory Service API
+  version: 1.0.0
+  description: Internal fleet state APIs and device event ingestion.
+servers:
+  - url: http://localhost:3003
+paths:
+  /status:
+    get:
+      summary: Service health status
+      responses:
+        '200':
+          description: Bike inventory service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceStatus'
+
+  /internal/bikes/{bikeId}:
+    parameters:
+      - $ref: '#/components/parameters/BikeIdPath'
+    get:
+      summary: Fetch bike state
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      responses:
+        '200':
+          description: Bike found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BikeState'
+        '404':
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/bikes/{bikeId}/reserve:
+    parameters:
+      - $ref: '#/components/parameters/BikeIdPath'
+    post:
+      summary: Reserve bike for ride start
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      responses:
+        '200':
+          description: Bike reserved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BikeState'
+        '409':
+          description: Bike unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/bikes/{bikeId}/release:
+    parameters:
+      - $ref: '#/components/parameters/BikeIdPath'
+    post:
+      summary: Release bike after ride completion
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dockId:
+                  type: string
+      responses:
+        '200':
+          description: Bike released
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BikeState'
+        '404':
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/device-events:
+    post:
+      summary: Ingest device-originated telemetry and lock state updates
+      security:
+        - internalMtls: []
+          serviceJwt: []
+          deviceCert: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+      responses:
+        '202':
+          description: Device event accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted:
+                    type: boolean
+                    example: true
+        '400':
+          description: Invalid event data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Replayed nonce detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/admin/bikes/{bikeId}/override-lock:
+    parameters:
+      - $ref: '#/components/parameters/BikeIdPath'
+    post:
+      summary: Maintainer override for lock state
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lockState]
+              properties:
+                lockState:
+                  type: string
+                  enum: [locked, unlocked]
+      responses:
+        '200':
+          description: Lock state changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BikeState'
+        '403':
+          description: Maintainer role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  parameters:
+    BikeIdPath:
+      in: path
+      name: bikeId
+      required: true
+      schema:
+        type: string
+
+  securitySchemes:
+    serviceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    internalMtls:
+      type: apiKey
+      in: header
+      name: x-internal-mtls
+      description: Local development simulation for mTLS.
+    deviceCert:
+      type: apiKey
+      in: header
+      name: x-device-cert
+      description: Device certificate identity for TB3 in this MVP.
+
+  schemas:
+    ServiceStatus:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: bike-inventory-service
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+              oneOf:
+                - type: object
+                - type: array
+                  items: {}
+                - type: string
+
+    BikeState:
+      type: object
+      required: [bikeId, availability, lockState, lastUpdated]
+      properties:
+        bikeId:
+          type: string
+        availability:
+          type: string
+          enum: [available, reserved, unavailable]
+        lockState:
+          type: string
+          enum: [locked, unlocked]
+        dockId:
+          type: string
+          nullable: true
+        lastUpdated:
+          type: string
+          format: date-time
+
+    DeviceEventRequest:
+      type: object
+      required: [bikeId, eventType, nonce, timestamp]
+      properties:
+        bikeId:
+          type: string
+        eventType:
+          type: string
+          enum: [telemetry, lock, unlock]
+        nonce:
+          type: string
+          minLength: 6
+        timestamp:
+          type: string
+          format: date-time
+        dockId:
+          type: string
+          nullable: true

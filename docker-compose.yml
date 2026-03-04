@@ -1,0 +1,91 @@
+services:
+  api-gateway-service:
+    build: ./services/api-gateway-service
+    ports:
+      - "3000:3000"
+    environment:
+      SERVICE_TOKEN_SECRET: citybike-shared-secret
+      USER_SERVICE_URL: http://user-service:3000
+      RIDE_SERVICE_URL: http://ride-service:3000
+      INVENTORY_SERVICE_URL: http://bike-inventory-service:3000
+      PAYMENT_SERVICE_URL: http://payment-service:3000
+      PARTNER_ANALYTICS_SERVICE_URL: http://partner-analytics-service:3000
+      PARTNER_API_KEYS: partner-a-demo-key
+    depends_on:
+      - user-service
+      - ride-service
+      - bike-inventory-service
+      - payment-service
+      - partner-analytics-service
+
+  user-service:
+    build: ./services/user-service
+    ports:
+      - "3001:3000"
+    environment:
+      SERVICE_TOKEN_SECRET: citybike-shared-secret
+      DATABASE_CLUSTER_URL: http://database-cluster-service:3000
+      RIDE_SERVICE_URL: http://ride-service:3000
+      PAYMENT_SERVICE_URL: http://payment-service:3000
+      DB_CRED_USER: db-user-secret
+    depends_on:
+      - database-cluster-service
+
+  ride-service:
+    build: ./services/ride-service
+    ports:
+      - "3002:3000"
+    environment:
+      SERVICE_TOKEN_SECRET: citybike-shared-secret
+      DATABASE_CLUSTER_URL: http://database-cluster-service:3000
+      USER_SERVICE_URL: http://user-service:3000
+      INVENTORY_SERVICE_URL: http://bike-inventory-service:3000
+      PAYMENT_SERVICE_URL: http://payment-service:3000
+      DB_CRED_RIDE: db-ride-secret
+    depends_on:
+      - database-cluster-service
+
+  bike-inventory-service:
+    build: ./services/bike-inventory-service
+    ports:
+      - "3003:3000"
+    environment:
+      SERVICE_TOKEN_SECRET: citybike-shared-secret
+      DATABASE_CLUSTER_URL: http://database-cluster-service:3000
+      DB_CRED_INVENTORY: db-inventory-secret
+    depends_on:
+      - database-cluster-service
+
+  payment-service:
+    build: ./services/payment-service
+    ports:
+      - "3004:3000"
+    environment:
+      SERVICE_TOKEN_SECRET: citybike-shared-secret
+      DATABASE_CLUSTER_URL: http://database-cluster-service:3000
+      DB_CRED_PAYMENT: db-payment-secret
+    depends_on:
+      - database-cluster-service
+
+  partner-analytics-service:
+    build: ./services/partner-analytics-service
+    ports:
+      - "3005:3000"
+    environment:
+      SERVICE_TOKEN_SECRET: citybike-shared-secret
+      DATABASE_CLUSTER_URL: http://database-cluster-service:3000
+      DB_CRED_ANALYTICS: db-analytics-secret
+    depends_on:
+      - database-cluster-service
+
+  database-cluster-service:
+    build: ./services/database-cluster-service
+    ports:
+      - "3006:3000"
+    environment:
+      SERVICE_TOKEN_SECRET: citybike-shared-secret
+      DB_CRED_USER: db-user-secret
+      DB_CRED_RIDE: db-ride-secret
+      DB_CRED_INVENTORY: db-inventory-secret
+      DB_CRED_PAYMENT: db-payment-secret
+      DB_CRED_ANALYTICS: db-analytics-secret

@@ -1,0 +1,263 @@
+openapi: 3.0.3
+info:
+  title: Ride Service API
+  version: 1.0.0
+  description: Internal ride orchestration APIs used by gateway and trusted services.
+servers:
+  - url: http://localhost:3002
+paths:
+  /status:
+    get:
+      summary: Service health status
+      responses:
+        '200':
+          description: Ride service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceStatus'
+
+  /internal/rides/start:
+    post:
+      summary: Start a ride and reserve a bike
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartRideRequest'
+      responses:
+        '201':
+          description: Ride started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RideResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Bike unavailable or duplicate idempotency key conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/rides/{rideId}/end:
+    parameters:
+      - $ref: '#/components/parameters/RideIdPath'
+    post:
+      summary: End a ride and release the bike
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EndRideRequest'
+      responses:
+        '200':
+          description: Ride ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RideResponse'
+        '404':
+          description: Ride does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Ride already completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/rides/{rideId}:
+    parameters:
+      - $ref: '#/components/parameters/RideIdPath'
+    get:
+      summary: Fetch one ride by ID
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      responses:
+        '200':
+          description: Ride found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RideResponse'
+        '404':
+          description: Ride does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/users/{userId}/rides:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 5
+    get:
+      summary: Fetch recent rides for one user
+      security:
+        - internalMtls: []
+          serviceJwt: []
+      responses:
+        '200':
+          description: Ride list returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RideResponse'
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  parameters:
+    RideIdPath:
+      in: path
+      name: rideId
+      required: true
+      schema:
+        type: string
+    UserIdPath:
+      in: path
+      name: userId
+      required: true
+      schema:
+        type: string
+
+  securitySchemes:
+    serviceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    internalMtls:
+      type: apiKey
+      in: header
+      name: x-internal-mtls
+      description: Local development simulation for mTLS.
+
+  schemas:
+    ServiceStatus:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: ride-service
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+              oneOf:
+                - type: object
+                - type: array
+                  items: {}
+                - type: string
+
+    StartRideRequest:
+      type: object
+      required: [userId, bikeId, idempotencyKey]
+      properties:
+        userId:
+          type: string
+        bikeId:
+          type: string
+        idempotencyKey:
+          type: string
+          minLength: 8
+        startedAt:
+          type: string
+          format: date-time
+
+    EndRideRequest:
+      type: object
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey:
+          type: string
+          minLength: 8
+        endedAt:
+          type: string
+          format: date-time
+        dockId:
+          type: string
+
+    RideResponse:
+      type: object
+      required: [rideId, userId, bikeId, status, startedAt, amount]
+      properties:
+        rideId:
+          type: string
+        userId:
+          type: string
+        bikeId:
+          type: string
+        status:
+          type: string
+          enum: [active, completed]
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        amount:
+          type: number
+          format: float
+        currency:
+          type: string
+          example: GBP
