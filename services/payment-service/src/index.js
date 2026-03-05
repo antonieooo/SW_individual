@@ -70,6 +70,11 @@ function getBearerToken(req) {
   return header.slice("Bearer ".length).trim();
 }
 
+function resolveIdempotencyKey(req) {
+  const headerKey = req.headers["idempotency-key"];
+  return typeof headerKey === "string" ? headerKey : null;
+}
+
 function buildServiceToken(aud, actor, scopes = []) {
   return signToken({
     type: "service",
@@ -186,6 +191,51 @@ function sanitizePayment(payment) {
   };
 }
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isSafeIdentifier(value) {
+  return typeof value === "string" && /^[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidUserId(value) {
+  return typeof value === "string" && /^[um]-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidRideId(value) {
+  return typeof value === "string" && /^ride-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidPaymentBindingId(value) {
+  return typeof value === "string" && /^paybind-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidIdempotencyKey(value) {
+  return typeof value === "string" && /^[A-Za-z0-9._:-]{8,}$/.test(value);
+}
+
+function isIsoCurrency(value) {
+  return typeof value === "string" && /^[A-Z]{3}$/.test(value);
+}
+
+function getQueryKeys(req) {
+  const parsedKeys = Object.keys(req.query || {});
+  const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : "";
+  const queryIndex = originalUrl.indexOf("?");
+  if (queryIndex === -1) {
+    return parsedKeys;
+  }
+  const rawQuery = originalUrl.slice(queryIndex + 1);
+  const rawKeys = Array.from(new URLSearchParams(rawQuery).keys());
+  return Array.from(new Set([...parsedKeys, ...rawKeys]));
+}
+
+function hasUnexpectedQueryParams(req, allowedKeys) {
+  const allowed = new Set(allowedKeys);
+  return getQueryKeys(req).some((key) => !key || !allowed.has(key));
+}
+
 app.get("/status", (_req, res) => {
   res.json({
     status: "ok",
@@ -195,27 +245,70 @@ app.get("/status", (_req, res) => {
 });
 
 app.post("/internal/payments/charge", requireInternalAuth, async (req, res) => {
-  const { userId, rideId, amount, currency, paymentBindingId, idempotencyKey } = req.body || {};
-
-  if (!userId || !rideId || amount === undefined || !currency || !paymentBindingId || !idempotencyKey) {
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
+  const payload = req.body;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return errorResponse(res, 400, "INVALID_CHARGE_PAYLOAD", "Charge payload must be an object");
+  }
+  const allowedKeys = ["userId", "rideId", "amount", "currency", "paymentBindingId"];
+  const hasUnsupportedKey = Object.keys(payload).some((key) => !allowedKeys.includes(key));
+  if (hasUnsupportedKey) {
     return errorResponse(
       res,
       400,
       "INVALID_CHARGE_PAYLOAD",
-      "userId, rideId, amount, currency, paymentBindingId, idempotencyKey are required"
+      "Only userId, rideId, amount, currency and paymentBindingId are allowed"
     );
   }
 
-  const numericAmount = Number(amount);
-  if (Number.isNaN(numericAmount) || numericAmount < 0) {
-    return errorResponse(res, 400, "INVALID_AMOUNT", "amount must be a positive number");
+  const { userId, rideId, amount, currency, paymentBindingId } = payload;
+  const idempotencyKey = resolveIdempotencyKey(req);
+
+  if (!["ride-service", "payment-service"].includes(req.auth.iss)) {
+    return errorResponse(res, 403, "ACCESS_DENIED", "Caller cannot create charges");
   }
+
+  if (
+    !isValidUserId(userId) ||
+    !isValidRideId(rideId) ||
+    amount === undefined ||
+    !isIsoCurrency(currency) ||
+    !isValidPaymentBindingId(paymentBindingId) ||
+    !isValidIdempotencyKey(idempotencyKey)
+  ) {
+    return errorResponse(
+      res,
+      400,
+      "INVALID_CHARGE_PAYLOAD",
+      "userId, rideId, amount, currency, paymentBindingId, and Idempotency-Key header are required in valid formats"
+    );
+  }
+
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) {
+    return errorResponse(res, 400, "INVALID_AMOUNT", "amount must be a non-negative number");
+  }
+  const numericAmount = amount;
 
   try {
     const existingIdempotency = await dbGet("idempotency", idempotencyKey);
     if (existingIdempotency && existingIdempotency.paymentId) {
       const existingPayment = await dbGet("payments", existingIdempotency.paymentId);
       if (existingPayment) {
+        const isSameRequest =
+          existingPayment.userId === userId &&
+          existingPayment.rideId === rideId &&
+          Number(existingPayment.amount) === Number(numericAmount.toFixed(2)) &&
+          existingPayment.currency === currency;
+        if (!isSameRequest) {
+          return errorResponse(
+            res,
+            409,
+            "IDEMPOTENCY_CONFLICT",
+            "Idempotency key already maps to a different payment request"
+          );
+        }
         return res.status(200).json(sanitizePayment(existingPayment));
       }
     }
@@ -249,10 +342,22 @@ app.post("/internal/payments/charge", requireInternalAuth, async (req, res) => {
 });
 
 app.get("/internal/payments/:paymentId", requireInternalAuth, async (req, res) => {
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
   try {
     const payment = await dbGet("payments", req.params.paymentId);
     if (!payment) {
       return errorResponse(res, 404, "PAYMENT_NOT_FOUND", `Payment ${req.params.paymentId} not found`);
+    }
+
+    const actor = req.auth.actor;
+    if (actor && actor.userId && actor.role !== "maintainer" && actor.userId !== payment.userId) {
+      return errorResponse(res, 403, "ACCESS_DENIED", "Cannot access this payment");
+    }
+
+    if (!["charged", "refunded"].includes(payment.status)) {
+      return errorResponse(res, 409, "PAYMENT_STATE_CONFLICT", "Payment has an invalid state");
     }
 
     return res.json(sanitizePayment(payment));
@@ -263,6 +368,12 @@ app.get("/internal/payments/:paymentId", requireInternalAuth, async (req, res) =
 
 app.get("/internal/users/:userId/billing-summary", requireInternalAuth, async (req, res) => {
   const { userId } = req.params;
+  if (!isValidUserId(userId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
   const actor = req.auth.actor;
 
   if (actor && actor.userId && actor.role !== "maintainer" && actor.userId !== userId) {
@@ -271,6 +382,17 @@ app.get("/internal/users/:userId/billing-summary", requireInternalAuth, async (r
 
   try {
     const payments = await dbList("payments", "userId", userId, 500);
+
+    const hasInvalidPaymentRecord = payments.some((payment) => {
+      return (
+        !payment ||
+        Number.isNaN(Number(payment.amount)) ||
+        !["charged", "refunded"].includes(payment.status)
+      );
+    });
+    if (hasInvalidPaymentRecord) {
+      return errorResponse(res, 409, "BILLING_CONFLICT", "Billing records contain invalid entries");
+    }
 
     const charged = payments.filter((payment) => payment.status === "charged");
     const totalCharged = charged.reduce((sum, payment) => sum + Number(payment.amount), 0);
@@ -284,6 +406,17 @@ app.get("/internal/users/:userId/billing-summary", requireInternalAuth, async (r
   } catch (err) {
     return errorResponse(res, 502, "BILLING_QUERY_FAILED", "Could not read billing summary", err.message);
   }
+});
+
+app.use((err, _req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && Object.prototype.hasOwnProperty.call(err, "body")) {
+    return errorResponse(res, 400, "INVALID_JSON", "Malformed JSON request body");
+  }
+  return next(err);
+});
+
+app.use((err, _req, res, _next) => {
+  return errorResponse(res, 500, "INTERNAL_ERROR", "Unhandled server error", err.message);
 });
 
 const PORT = process.env.PORT || 3000;

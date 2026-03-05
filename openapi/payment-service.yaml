@@ -23,6 +23,8 @@ paths:
       security:
         - internalMtls: []
           serviceJwt: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -48,6 +50,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller is not allowed to create a charge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Charge conflict for same idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream or persistence failure while charging
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /internal/payments/{paymentId}:
     parameters:
@@ -64,8 +90,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid path or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Payment does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller is not allowed to view this payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Payment state conflict while querying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Internal query failure
           content:
             application/json:
               schema:
@@ -86,9 +142,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BillingSummary'
+        '400':
+          description: Invalid path or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller is not allowed to read this billing summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Billing summary conflict while aggregating
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Internal aggregation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   parameters:
+    IdempotencyKeyHeader:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        pattern: '^[A-Za-z0-9._:-]{8,}$'
     PaymentIdPath:
       in: path
       name: paymentId
@@ -101,6 +195,8 @@ components:
       required: true
       schema:
         type: string
+        pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        example: u-100
 
   securitySchemes:
     serviceJwt:
@@ -150,23 +246,25 @@ components:
 
     ChargeRequest:
       type: object
-      required: [userId, rideId, amount, currency, paymentBindingId, idempotencyKey]
+      additionalProperties: false
+      required: [userId, rideId, amount, currency, paymentBindingId]
       properties:
         userId:
           type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
         rideId:
           type: string
+          pattern: '^ride-[A-Za-z0-9._:-]+$'
         amount:
           type: number
           minimum: 0
         currency:
           type: string
+          pattern: '^[A-Z]{3}$'
           example: GBP
         paymentBindingId:
           type: string
-        idempotencyKey:
-          type: string
-          minLength: 8
+          pattern: '^paybind-[A-Za-z0-9._:-]+$'
 
     PaymentResponse:
       type: object
@@ -176,12 +274,15 @@ components:
           type: string
         userId:
           type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
         rideId:
           type: string
+          pattern: '^ride-[A-Za-z0-9._:-]+$'
         amount:
           type: number
         currency:
           type: string
+          pattern: '^[A-Z]{3}$'
         status:
           type: string
           enum: [charged, refunded]
@@ -195,6 +296,7 @@ components:
       properties:
         userId:
           type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
         currency:
           type: string
           example: GBP

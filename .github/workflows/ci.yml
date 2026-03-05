@@ -1,11 +1,145 @@
-# This file is intentionally empty.
-# You must design and implement their own CI workflow
-# according to your architecture and testing strategy.
-
 name: CityBike CI
 
 on:
   push:
   pull_request:
 
-jobs: {}
+permissions:
+  contents: read
+
+concurrency:
+  group: citybike-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-contracts:
+    name: Validate Contracts And Service Entrypoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Validate all OpenAPI specifications
+        run: |
+          set -euo pipefail
+          for f in \
+            openapi/user-service.yaml \
+            openapi/ride-service.yaml \
+            openapi/bike-inventory-service.yaml \
+            openapi/payment-service.yaml \
+            openapi/partner-analytics-service.yaml \
+            openapi/api-gateway-service.yaml \
+            openapi/database-cluster-service.yaml
+          do
+            echo "=== validating $f ==="
+            npx swagger-cli validate "$f"
+          done
+
+      - name: Check JavaScript syntax for all services
+        run: |
+          set -euo pipefail
+          for f in \
+            services/api-gateway-service/src/index.js \
+            services/user-service/src/index.js \
+            services/ride-service/src/index.js \
+            services/bike-inventory-service/src/index.js \
+            services/payment-service/src/index.js \
+            services/partner-analytics-service/src/index.js \
+            services/database-cluster-service/src/index.js
+          do
+            echo "=== checking $f ==="
+            node --check "$f"
+          done
+
+  staging-contract-tests:
+    name: Build Deploy To Staging And Run Contract Tests
+    runs-on: ubuntu-latest
+    needs: validate-contracts
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install Schemathesis
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv-schemathesis
+          .venv-schemathesis/bin/pip install --upgrade pip
+          .venv-schemathesis/bin/pip install schemathesis
+
+      - name: Build and deploy services to staging (Docker Compose)
+        run: |
+          set -euo pipefail
+          docker compose up -d --build
+
+      - name: Smoke check all service status endpoints
+        run: |
+          set -euo pipefail
+          for port in 3000 3001 3002 3003 3004 3005 3006; do
+            curl -fsS "http://localhost:${port}/status" >/dev/null
+          done
+
+      - name: Run negative authentication checks
+        run: |
+          set -euo pipefail
+          bash openapi/tests/schemathesis/run_auth_negative.sh
+
+      - name: Run full Schemathesis task suite
+        run: |
+          set -euo pipefail
+          bash openapi/tests/schemathesis/run_task_d.sh
+
+      - name: Save docker compose logs
+        if: always()
+        run: |
+          set -euo pipefail
+          docker compose ps
+          docker compose logs --no-color > ci-docker-compose.log
+
+      - name: Upload Schemathesis logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemathesis-logs-${{ github.run_id }}
+          path: openapi/tests/schemathesis/logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload docker compose logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-compose-logs-${{ github.run_id }}
+          path: ci-docker-compose.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Teardown staging environment
+        if: always()
+        run: |
+          set -euo pipefail
+          docker compose down -v --remove-orphans

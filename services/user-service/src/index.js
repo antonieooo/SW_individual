@@ -195,6 +195,39 @@ function canAccessUser(req, targetUserId) {
   return actor.userId === targetUserId;
 }
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isValidUserId(value) {
+  return typeof value === "string" && /^[um]-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidProfileName(value) {
+  return typeof value === "string" && /^[A-Za-z][A-Za-z0-9 .'-]{1,63}$/.test(value.trim());
+}
+
+function isValidPhone(value) {
+  return typeof value === "string" && /^[+]?[0-9\- ]{7,20}$/.test(value);
+}
+
+function getQueryKeys(req) {
+  const parsedKeys = Object.keys(req.query || {});
+  const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : "";
+  const queryIndex = originalUrl.indexOf("?");
+  if (queryIndex === -1) {
+    return parsedKeys;
+  }
+  const rawQuery = originalUrl.slice(queryIndex + 1);
+  const rawKeys = Array.from(new URLSearchParams(rawQuery).keys());
+  return Array.from(new Set([...parsedKeys, ...rawKeys]));
+}
+
+function hasUnexpectedQueryParams(req, allowedKeys) {
+  const allowed = new Set(allowedKeys);
+  return getQueryKeys(req).some((key) => !key || !allowed.has(key));
+}
+
 function sanitizeUser(user) {
   return {
     id: user.id,
@@ -214,6 +247,9 @@ app.get("/status", (_req, res) => {
 });
 
 app.post("/internal/auth/login", requireInternalAuth, async (req, res) => {
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
   const { email, password } = req.body || {};
 
   if (!email || !password) {
@@ -236,6 +272,12 @@ app.post("/internal/auth/login", requireInternalAuth, async (req, res) => {
 
 app.get("/internal/users/:userId/profile", requireInternalAuth, async (req, res) => {
   const { userId } = req.params;
+  if (!isValidUserId(userId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
   if (!canAccessUser(req, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "Access to this profile is forbidden");
   }
@@ -254,13 +296,45 @@ app.get("/internal/users/:userId/profile", requireInternalAuth, async (req, res)
 
 app.patch("/internal/users/:userId/profile", requireInternalAuth, async (req, res) => {
   const { userId } = req.params;
+  if (!isValidUserId(userId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
   if (!canAccessUser(req, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "Profile update forbidden");
   }
 
-  const { name, phone } = req.body || {};
-  if (!name && !phone) {
+  const payload = req.body;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return errorResponse(res, 400, "INVALID_PATCH", "Profile patch payload must be an object");
+  }
+
+  const allowedKeys = ["name", "phone"];
+  const hasUnsupportedKey = Object.keys(payload).some((key) => !allowedKeys.includes(key));
+  if (hasUnsupportedKey) {
+    return errorResponse(res, 400, "INVALID_PATCH", "Only name and phone can be updated");
+  }
+
+  const hasName = Object.prototype.hasOwnProperty.call(payload, "name");
+  const hasPhone = Object.prototype.hasOwnProperty.call(payload, "phone");
+
+  if (!hasName && !hasPhone) {
     return errorResponse(res, 400, "INVALID_PATCH", "At least one mutable field is required");
+  }
+
+  if (hasName && !isValidProfileName(payload.name)) {
+    return errorResponse(res, 400, "INVALID_PATCH", "name must be a non-empty string with at least 2 characters");
+  }
+
+  if (hasPhone && !isValidPhone(payload.phone)) {
+    return errorResponse(
+      res,
+      400,
+      "INVALID_PATCH",
+      "phone must match +?[0-9- ] and be between 7 and 20 characters"
+    );
   }
 
   try {
@@ -271,8 +345,8 @@ app.patch("/internal/users/:userId/profile", requireInternalAuth, async (req, re
 
     const updated = {
       ...user,
-      name: name || user.name,
-      phone: phone || user.phone
+      name: hasName ? payload.name : user.name,
+      phone: hasPhone ? payload.phone : user.phone
     };
 
     const persisted = await dbUpsertUser(updated);
@@ -288,6 +362,12 @@ app.patch("/internal/users/:userId/profile", requireInternalAuth, async (req, re
 
 app.get("/internal/users/:userId/payment-binding", requireInternalAuth, async (req, res) => {
   const { userId } = req.params;
+  if (!isValidUserId(userId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
 
   try {
     const user = await dbGetUserById(userId);
@@ -307,6 +387,12 @@ app.get("/internal/users/:userId/payment-binding", requireInternalAuth, async (r
 
 app.get("/internal/users/:userId/dashboard", requireInternalAuth, async (req, res) => {
   const { userId } = req.params;
+  if (!isValidUserId(userId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
   if (!canAccessUser(req, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "Access to dashboard is forbidden");
   }
@@ -357,6 +443,17 @@ app.get("/internal/users/:userId/dashboard", requireInternalAuth, async (req, re
   } catch (err) {
     return errorResponse(res, 502, "DASHBOARD_FAILED", "Could not assemble dashboard", err.message);
   }
+});
+
+app.use((err, _req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && Object.prototype.hasOwnProperty.call(err, "body")) {
+    return errorResponse(res, 400, "INVALID_JSON", "Malformed JSON request body");
+  }
+  return next(err);
+});
+
+app.use((err, _req, res, _next) => {
+  return errorResponse(res, 500, "INTERNAL_ERROR", "Unhandled server error", err.message);
 });
 
 const PORT = process.env.PORT || 3000;

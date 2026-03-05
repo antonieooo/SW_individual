@@ -37,8 +37,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DailyUsageReport'
+        '400':
+          description: Invalid date query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Report does not exist for date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Internal report retrieval or refresh failure
           content:
             application/json:
               schema:

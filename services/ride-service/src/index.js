@@ -73,6 +73,11 @@ function getBearerToken(req) {
   return header.slice("Bearer ".length).trim();
 }
 
+function resolveIdempotencyKey(req) {
+  const headerKey = req.headers["idempotency-key"];
+  return typeof headerKey === "string" ? headerKey : null;
+}
+
 function buildServiceToken(aud, actor, scopes = []) {
   return signToken({
     type: "service",
@@ -203,6 +208,56 @@ function sanitizeRide(ride) {
   };
 }
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isValidIdempotencyKey(value) {
+  return typeof value === "string" && /^[A-Za-z0-9._:-]{8,}$/.test(value);
+}
+
+function isValidUserId(value) {
+  return typeof value === "string" && /^[um]-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidBikeId(value) {
+  return typeof value === "string" && /^bike-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidRideId(value) {
+  return typeof value === "string" && /^ride-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidDockId(value) {
+  return typeof value === "string" && /^dock-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidDateTimeString(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const dateTimePattern =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+  return dateTimePattern.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function getQueryKeys(req) {
+  const parsedKeys = Object.keys(req.query || {});
+  const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : "";
+  const queryIndex = originalUrl.indexOf("?");
+  if (queryIndex === -1) {
+    return parsedKeys;
+  }
+  const rawQuery = originalUrl.slice(queryIndex + 1);
+  const rawKeys = Array.from(new URLSearchParams(rawQuery).keys());
+  return Array.from(new Set([...parsedKeys, ...rawKeys]));
+}
+
+function hasUnexpectedQueryParams(req, allowedKeys) {
+  const allowed = new Set(allowedKeys);
+  return getQueryKeys(req).some((key) => !key || !allowed.has(key));
+}
+
 function calculateRideAmount(startedAtIso, endedAtIso) {
   const startedAt = new Date(startedAtIso).getTime();
   const endedAt = new Date(endedAtIso).getTime();
@@ -220,10 +275,42 @@ app.get("/status", (_req, res) => {
 });
 
 app.post("/internal/rides/start", requireInternalAuth, async (req, res) => {
-  const { userId, bikeId, idempotencyKey, startedAt } = req.body || {};
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
+  const payload = req.body;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "Ride start payload must be an object");
+  }
+  const allowedKeys = ["userId", "bikeId", "startedAt"];
+  const hasUnsupportedKey = Object.keys(payload).some((key) => !allowedKeys.includes(key));
+  if (hasUnsupportedKey) {
+    return errorResponse(
+      res,
+      400,
+      "INVALID_PAYLOAD",
+      "Only userId, bikeId and startedAt are allowed in ride start payload"
+    );
+  }
 
-  if (!userId || !bikeId || !idempotencyKey) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "userId, bikeId and idempotencyKey are required");
+  const { userId, bikeId, startedAt } = payload;
+  const idempotencyKey = resolveIdempotencyKey(req);
+
+  if (!isValidUserId(userId) || !isValidBikeId(bikeId)) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "userId and bikeId must match expected ID formats");
+  }
+
+  if (!isValidIdempotencyKey(idempotencyKey)) {
+    return errorResponse(
+      res,
+      400,
+      "INVALID_PAYLOAD",
+      "Idempotency-Key header is required and must be at least 8 safe characters"
+    );
+  }
+
+  if (startedAt !== undefined && !isValidDateTimeString(startedAt)) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "startedAt must be an RFC3339 date-time string");
   }
 
   if (!ensureActorCanAccessUser(req, userId)) {
@@ -235,6 +322,14 @@ app.post("/internal/rides/start", requireInternalAuth, async (req, res) => {
     if (idemRecord && idemRecord.rideId) {
       const existingRide = await dbGet("rides", idemRecord.rideId);
       if (existingRide) {
+        if (existingRide.userId !== userId || existingRide.bikeId !== bikeId) {
+          return errorResponse(
+            res,
+            409,
+            "IDEMPOTENCY_CONFLICT",
+            "Idempotency key already maps to a different ride request"
+          );
+        }
         return res.status(201).json(sanitizeRide(existingRide));
       }
     }
@@ -250,9 +345,18 @@ app.post("/internal/rides/start", requireInternalAuth, async (req, res) => {
     });
 
     if (bindingResult.status !== 200) {
+      if (bindingResult.status === 404) {
+        return errorResponse(res, 404, "USER_NOT_FOUND", `User ${userId} not found`, bindingResult.payload);
+      }
+      if (bindingResult.status === 403) {
+        return errorResponse(res, 403, "ACCESS_DENIED", "Cannot verify payment binding for this user");
+      }
+      if (bindingResult.status === 401) {
+        return errorResponse(res, 401, "INVALID_SERVICE_TOKEN", "Internal authentication failed");
+      }
       return errorResponse(
         res,
-        400,
+        502,
         "PAYMENT_BINDING_INVALID",
         "Cannot verify payment binding for user",
         bindingResult.payload
@@ -280,13 +384,15 @@ app.post("/internal/rides/start", requireInternalAuth, async (req, res) => {
       audience: "payment-service",
       actor,
       scopes: ["billing:charge"],
+      headers: {
+        "Idempotency-Key": `preauth-${idempotencyKey}`
+      },
       body: {
         userId,
         rideId,
         amount: 1,
         currency: "GBP",
-        paymentBindingId: bindingResult.payload.paymentBindingId,
-        idempotencyKey: `preauth-${idempotencyKey}`
+        paymentBindingId: bindingResult.payload.paymentBindingId
       }
     });
 
@@ -331,10 +437,47 @@ app.post("/internal/rides/start", requireInternalAuth, async (req, res) => {
 
 app.post("/internal/rides/:rideId/end", requireInternalAuth, async (req, res) => {
   const { rideId } = req.params;
-  const { idempotencyKey, endedAt, dockId, userId } = req.body || {};
+  if (!isValidRideId(rideId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "rideId must match expected ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
+  const payload = req.body;
+  if (payload !== undefined && (payload === null || typeof payload !== "object" || Array.isArray(payload))) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "Ride end payload must be an object when provided");
+  }
 
-  if (!idempotencyKey) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "idempotencyKey is required");
+  const effectivePayload = payload || {};
+  const allowedKeys = ["endedAt", "dockId"];
+  const hasUnsupportedKey = Object.keys(effectivePayload).some((key) => !allowedKeys.includes(key));
+  if (hasUnsupportedKey) {
+    return errorResponse(
+      res,
+      400,
+      "INVALID_PAYLOAD",
+      "Only endedAt and dockId are allowed in ride end payload"
+    );
+  }
+
+  const { endedAt, dockId } = effectivePayload;
+  const idempotencyKey = resolveIdempotencyKey(req);
+
+  if (!isValidIdempotencyKey(idempotencyKey)) {
+    return errorResponse(
+      res,
+      400,
+      "INVALID_PAYLOAD",
+      "Idempotency-Key header is required and must be at least 8 safe characters"
+    );
+  }
+
+  if (endedAt !== undefined && !isValidDateTimeString(endedAt)) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "endedAt must be an RFC3339 date-time string");
+  }
+
+  if (dockId !== undefined && dockId !== null && !isValidDockId(dockId)) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "dockId must match expected dock ID format when provided");
   }
 
   try {
@@ -343,14 +486,21 @@ app.post("/internal/rides/:rideId/end", requireInternalAuth, async (req, res) =>
       return errorResponse(res, 404, "RIDE_NOT_FOUND", `Ride ${rideId} not found`);
     }
 
-    const effectiveUserId = userId || ride.userId;
-    if (!ensureActorCanAccessUser(req, effectiveUserId)) {
+    if (!ensureActorCanAccessUser(req, ride.userId)) {
       return errorResponse(res, 403, "ACCESS_DENIED", "Cannot end ride for another user");
     }
 
     const endIdemKey = `end-${idempotencyKey}`;
     const idemRecord = await dbGet("idempotency", endIdemKey);
-    if (idemRecord && idemRecord.rideId === rideId) {
+    if (idemRecord) {
+      if (idemRecord.rideId !== rideId) {
+        return errorResponse(
+          res,
+          409,
+          "IDEMPOTENCY_CONFLICT",
+          "Idempotency key already maps to a different ride termination request"
+        );
+      }
       return res.json(sanitizeRide(ride));
     }
 
@@ -367,7 +517,7 @@ app.post("/internal/rides/:rideId/end", requireInternalAuth, async (req, res) =>
       actor,
       scopes: ["inventory:release"],
       body: {
-        dockId: dockId || null
+        dockId: dockId === undefined ? null : dockId
       }
     });
 
@@ -402,13 +552,15 @@ app.post("/internal/rides/:rideId/end", requireInternalAuth, async (req, res) =>
       audience: "payment-service",
       actor,
       scopes: ["billing:charge"],
+      headers: {
+        "Idempotency-Key": `final-${idempotencyKey}`
+      },
       body: {
         userId: ride.userId,
         rideId: ride.rideId,
         amount,
         currency: "GBP",
-        paymentBindingId: bindingResult.payload.paymentBindingId,
-        idempotencyKey: `final-${idempotencyKey}`
+        paymentBindingId: bindingResult.payload.paymentBindingId
       }
     });
 
@@ -443,6 +595,12 @@ app.post("/internal/rides/:rideId/end", requireInternalAuth, async (req, res) =>
 
 app.get("/internal/rides/:rideId", requireInternalAuth, async (req, res) => {
   const { rideId } = req.params;
+  if (!isValidRideId(rideId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "rideId must match expected ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
 
   try {
     const ride = await dbGet("rides", rideId);
@@ -454,6 +612,15 @@ app.get("/internal/rides/:rideId", requireInternalAuth, async (req, res) => {
       return errorResponse(res, 403, "ACCESS_DENIED", "Cannot access this ride");
     }
 
+    if (
+      !isValidRideId(ride.rideId) ||
+      !isValidUserId(ride.userId) ||
+      !isValidBikeId(ride.bikeId) ||
+      !["active", "completed"].includes(ride.status)
+    ) {
+      return errorResponse(res, 409, "RIDE_STATE_CONFLICT", "Ride has an invalid state");
+    }
+
     return res.json(sanitizeRide(ride));
   } catch (err) {
     return errorResponse(res, 502, "RIDE_QUERY_FAILED", "Could not read ride", err.message);
@@ -462,14 +629,42 @@ app.get("/internal/rides/:rideId", requireInternalAuth, async (req, res) => {
 
 app.get("/internal/users/:userId/rides", requireInternalAuth, async (req, res) => {
   const { userId } = req.params;
+  if (!isValidUserId(userId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
+  }
   if (!ensureActorCanAccessUser(req, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "Cannot access rides for this user");
   }
 
-  const limit = Math.max(1, Math.min(20, Number(req.query.limit || 5)));
+  if (hasUnexpectedQueryParams(req, ["limit"])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Only limit query parameter is supported");
+  }
+
+  let limit = 5;
+  if (req.query.limit !== undefined) {
+    const parsedLimit = Number(req.query.limit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 20) {
+      return errorResponse(res, 400, "INVALID_QUERY", "limit must be an integer between 1 and 20");
+    }
+    limit = parsedLimit;
+  }
 
   try {
     const rides = await dbList("rides", "userId", userId, 200);
+
+    const hasInvalidRideRecord = rides.some((ride) => {
+      return (
+        !ride ||
+        !isValidRideId(ride.rideId) ||
+        !isValidUserId(ride.userId) ||
+        !isValidBikeId(ride.bikeId) ||
+        !ride.startedAt ||
+        !["active", "completed"].includes(ride.status)
+      );
+    });
+    if (hasInvalidRideRecord) {
+      return errorResponse(res, 409, "RIDE_HISTORY_CONFLICT", "Ride history contains invalid records");
+    }
 
     const items = rides
       .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
@@ -480,6 +675,17 @@ app.get("/internal/users/:userId/rides", requireInternalAuth, async (req, res) =
   } catch (err) {
     return errorResponse(res, 502, "RIDE_QUERY_FAILED", "Could not list rides", err.message);
   }
+});
+
+app.use((err, _req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && Object.prototype.hasOwnProperty.call(err, "body")) {
+    return errorResponse(res, 400, "INVALID_JSON", "Malformed JSON request body");
+  }
+  return next(err);
+});
+
+app.use((err, _req, res, _next) => {
+  return errorResponse(res, 500, "INTERNAL_ERROR", "Unhandled server error", err.message);
 });
 
 const PORT = process.env.PORT || 3000;

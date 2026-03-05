@@ -36,8 +36,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
-          description: Credentials invalid
+          description: Missing/invalid service authentication or credentials invalid
           content:
             application/json:
               schema:
@@ -58,6 +64,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Invalid path or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Access denied
           content:
@@ -94,6 +112,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Access denied
           content:
@@ -122,6 +146,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaymentBindingResponse'
+        '400':
+          description: Invalid path or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: User does not exist
           content:
@@ -144,6 +180,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserDashboardResponse'
+        '400':
+          description: Invalid path or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Access denied
           content:
@@ -165,6 +213,8 @@ components:
       required: true
       schema:
         type: string
+        pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        example: u-100
 
   securitySchemes:
     serviceJwt:
@@ -234,6 +284,7 @@ components:
           properties:
             id:
               type: string
+              pattern: '^[um]-[A-Za-z0-9._:-]+$'
             role:
               type: string
               enum: [user, maintainer]
@@ -242,6 +293,8 @@ components:
               format: email
             name:
               type: string
+              minLength: 2
+              pattern: "^[A-Za-z][A-Za-z0-9 .'-]{1,63}$"
 
     UserProfile:
       type: object
@@ -249,6 +302,7 @@ components:
       properties:
         id:
           type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
         role:
           type: string
           enum: [user, maintainer]
@@ -257,19 +311,26 @@ components:
           format: email
         name:
           type: string
+          minLength: 2
+          pattern: "^[A-Za-z][A-Za-z0-9 .'-]{1,63}$"
         phone:
           type: string
+          pattern: '^[+]?[0-9\- ]{7,20}$'
 
     UserProfilePatch:
       type: object
       additionalProperties: false
+      anyOf:
+        - required: [name]
+        - required: [phone]
       properties:
         name:
           type: string
-          minLength: 1
+          minLength: 2
+          pattern: "^[A-Za-z][A-Za-z0-9 .'-]{1,63}$"
         phone:
           type: string
-          minLength: 3
+          pattern: '^[+]?[0-9\- ]{7,20}$'
 
     PaymentBindingResponse:
       type: object
@@ -277,8 +338,10 @@ components:
       properties:
         userId:
           type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
         paymentBindingId:
           type: string
+          pattern: '^paybind-[A-Za-z0-9._:-]+$'
         status:
           type: string
           enum: [valid, suspended]
@@ -289,8 +352,10 @@ components:
       properties:
         rideId:
           type: string
+          pattern: '^ride-[A-Za-z0-9._:-]+$'
         bikeId:
           type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
         status:
           type: string
           enum: [active, completed]

@@ -11,40 +11,394 @@ paths:
       summary: DB cluster health
       responses:
         '200':
-          description: Healthy
+          description: Database cluster is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceStatus'
 
   /internal/db/{schema}/{collection}/get:
     post:
       summary: Get one record by id
+      security:
+        - internalMtls: []
+          serviceJwt: []
+          dbCredential: []
       parameters:
-        - in: path
-          name: schema
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: collection
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/SchemaPath'
+        - $ref: '#/components/parameters/CollectionPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DbGetRequest'
       responses:
         '200':
           description: Record returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DbItemResponse'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid service authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Schema access denied or invalid DB credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Item or collection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/db/{schema}/{collection}/list:
+    post:
+      summary: List records by optional field filter
+      security:
+        - internalMtls: []
+          serviceJwt: []
+          dbCredential: []
+      parameters:
+        - $ref: '#/components/parameters/SchemaPath'
+        - $ref: '#/components/parameters/CollectionPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DbListRequest'
+      responses:
+        '200':
+          description: Records returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DbListResponse'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid service authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Schema access denied or invalid DB credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Collection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /internal/db/{schema}/{collection}/upsert:
     post:
       summary: Upsert one record
+      security:
+        - internalMtls: []
+          serviceJwt: []
+          dbCredential: []
       parameters:
-        - in: path
-          name: schema
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: collection
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/SchemaPath'
+        - $ref: '#/components/parameters/CollectionPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DbUpsertRequest'
       responses:
         '201':
           description: Record persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DbItemResponse'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid service authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Schema access denied or invalid DB credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Collection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/db/analytics/refresh:
+    post:
+      summary: Refresh one analytics report date
+      security:
+        - internalMtls: []
+          serviceJwt: []
+          dbCredential: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyticsRefreshRequest'
+      responses:
+        '200':
+          description: Refreshed report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyUsageReport'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid service authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller forbidden or invalid DB credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/db/analytics/daily-usage:
+    get:
+      summary: Read one analytics report date
+      security:
+        - internalMtls: []
+          serviceJwt: []
+          dbCredential: []
+      parameters:
+        - in: query
+          name: date
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Report returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyUsageReport'
+        '400':
+          description: Invalid date query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid service authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller forbidden or invalid DB credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  parameters:
+    SchemaPath:
+      in: path
+      name: schema
+      required: true
+      schema:
+        type: string
+        enum: [user, ride, inventory, payment, analytics]
+    CollectionPath:
+      in: path
+      name: collection
+      required: true
+      schema:
+        type: string
+        minLength: 1
+
+  securitySchemes:
+    serviceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    internalMtls:
+      type: apiKey
+      in: header
+      name: x-internal-mtls
+      description: Local development simulation for mTLS.
+    dbCredential:
+      type: apiKey
+      in: header
+      name: x-db-credential
+      description: Schema-specific DB credential for trust boundary enforcement.
+
+  schemas:
+    ServiceStatus:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: database-cluster-service
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+              oneOf:
+                - type: object
+                - type: array
+                  items: {}
+                - type: string
+
+    DbGetRequest:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+
+    DbListRequest:
+      type: object
+      properties:
+        field:
+          type: string
+          minLength: 1
+        value: {}
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 100
+
+    DbUpsertRequest:
+      type: object
+      required: [id, document]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        document:
+          type: object
+          additionalProperties: true
+
+    DbItemResponse:
+      type: object
+      required: [item]
+      properties:
+        item:
+          type: object
+          additionalProperties: true
+
+    DbListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    AnalyticsRefreshRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+
+    DailyUsageReport:
+      type: object
+      required:
+        - date
+        - totalRides
+        - uniqueUsers
+        - activeBikes
+        - generatedAt
+        - minimumAggregationThreshold
+        - suppressed
+      properties:
+        date:
+          type: string
+          format: date
+        totalRides:
+          type: integer
+          minimum: 0
+        uniqueUsers:
+          type: integer
+          minimum: 0
+        activeBikes:
+          type: integer
+          minimum: 0
+        generatedAt:
+          type: string
+          format: date-time
+        minimumAggregationThreshold:
+          type: integer
+          minimum: 1
+        suppressed:
+          type: boolean

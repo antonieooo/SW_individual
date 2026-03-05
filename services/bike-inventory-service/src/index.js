@@ -12,6 +12,12 @@ const serviceUrls = {
 };
 
 const dbCredential = process.env.DB_CRED_INVENTORY || "db-inventory-secret";
+const allowedDeviceCerts = new Set(
+  (process.env.DEVICE_CERT_ALLOWLIST || "device-cert-taskd-001")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+);
 
 function encodePart(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -169,6 +175,52 @@ function sanitizeBike(bike) {
   };
 }
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isValidBikeId(value) {
+  return typeof value === "string" && /^bike-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidDockId(value) {
+  return typeof value === "string" && /^dock-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidNonce(value) {
+  return typeof value === "string" && /^[A-Za-z0-9._:-]{6,128}$/.test(value);
+}
+
+function isAllowedDeviceCert(value) {
+  return isNonEmptyString(value) && allowedDeviceCerts.has(value);
+}
+
+function isValidDateTimeString(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const dateTimePattern =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+  return dateTimePattern.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function getQueryKeys(req) {
+  const parsedKeys = Object.keys(req.query || {});
+  const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : "";
+  const queryIndex = originalUrl.indexOf("?");
+  if (queryIndex === -1) {
+    return parsedKeys;
+  }
+  const rawQuery = originalUrl.slice(queryIndex + 1);
+  const rawKeys = Array.from(new URLSearchParams(rawQuery).keys());
+  return Array.from(new Set([...parsedKeys, ...rawKeys]));
+}
+
+function hasUnexpectedQueryParams(req, allowedKeys) {
+  const allowed = new Set(allowedKeys);
+  return getQueryKeys(req).some((key) => !key || !allowed.has(key));
+}
+
 app.get("/status", (_req, res) => {
   res.json({
     status: "ok",
@@ -178,6 +230,13 @@ app.get("/status", (_req, res) => {
 });
 
 app.get("/internal/bikes/:bikeId", requireInternalAuth, async (req, res) => {
+  if (!isValidBikeId(req.params.bikeId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "bikeId must match expected bike ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
+
   try {
     const bike = await dbGet("bikes", req.params.bikeId);
     if (!bike) {
@@ -192,6 +251,19 @@ app.get("/internal/bikes/:bikeId", requireInternalAuth, async (req, res) => {
 
 app.post("/internal/bikes/:bikeId/reserve", requireInternalAuth, async (req, res) => {
   const { bikeId } = req.params;
+  if (!isValidBikeId(bikeId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "bikeId must match expected bike ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
+  const payload = req.body;
+  if (payload !== undefined && (payload === null || typeof payload !== "object" || Array.isArray(payload))) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "Reserve payload must be an object when provided");
+  }
+  if (payload && Object.keys(payload).length > 0) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "Reserve payload does not accept fields");
+  }
 
   try {
     const bike = await dbGet("bikes", bikeId);
@@ -223,7 +295,29 @@ app.post("/internal/bikes/:bikeId/reserve", requireInternalAuth, async (req, res
 
 app.post("/internal/bikes/:bikeId/release", requireInternalAuth, async (req, res) => {
   const { bikeId } = req.params;
-  const dockId = req.body && req.body.dockId;
+  if (!isValidBikeId(bikeId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "bikeId must match expected bike ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
+  const payload = req.body;
+  if (payload !== undefined && (payload === null || typeof payload !== "object" || Array.isArray(payload))) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "Release payload must be an object when provided");
+  }
+
+  const effectivePayload = payload || {};
+  const allowedKeys = ["dockId"];
+  const hasUnsupportedKey = Object.keys(effectivePayload).some((key) => !allowedKeys.includes(key));
+  if (hasUnsupportedKey) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "Only dockId is allowed in release payload");
+  }
+
+  const hasDockId = Object.prototype.hasOwnProperty.call(effectivePayload, "dockId");
+  const dockId = hasDockId ? effectivePayload.dockId : undefined;
+  if (hasDockId && dockId !== null && !isValidDockId(dockId)) {
+    return errorResponse(res, 400, "INVALID_PAYLOAD", "dockId must match expected dock ID format or be null");
+  }
 
   try {
     const bike = await dbGet("bikes", bikeId);
@@ -235,7 +329,7 @@ app.post("/internal/bikes/:bikeId/release", requireInternalAuth, async (req, res
       ...bike,
       availability: "available",
       lockState: "locked",
-      dockId: dockId || bike.dockId || null,
+      dockId: hasDockId ? dockId : bike.dockId || null,
       lastUpdated: new Date().toISOString()
     };
 
@@ -251,23 +345,54 @@ app.post("/internal/bikes/:bikeId/release", requireInternalAuth, async (req, res
 });
 
 app.post("/internal/device-events", requireInternalAuth, async (req, res) => {
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
   const deviceCert = req.headers["x-device-cert"];
-  if (!deviceCert) {
-    return errorResponse(res, 401, "DEVICE_CERT_REQUIRED", "x-device-cert header is required");
+  if (!isAllowedDeviceCert(deviceCert)) {
+    return errorResponse(res, 401, "DEVICE_CERT_REQUIRED", "A valid x-device-cert header is required");
   }
 
-  const { bikeId, eventType, nonce, timestamp, dockId } = req.body || {};
-  if (!bikeId || !eventType || !nonce || !timestamp) {
+  const payload = req.body;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return errorResponse(res, 400, "INVALID_EVENT_PAYLOAD", "Device event payload must be an object");
+  }
+  const allowedKeys = ["bikeId", "eventType", "nonce", "timestamp", "dockId"];
+  const hasUnsupportedKey = Object.keys(payload).some((key) => !allowedKeys.includes(key));
+  if (hasUnsupportedKey) {
     return errorResponse(
       res,
       400,
       "INVALID_EVENT_PAYLOAD",
-      "bikeId, eventType, nonce and timestamp are required"
+      "Only bikeId, eventType, nonce, timestamp and dockId are allowed"
+    );
+  }
+
+  const { bikeId, eventType, nonce, timestamp, dockId } = payload;
+  if (
+    !isValidBikeId(bikeId) ||
+    !isNonEmptyString(eventType) ||
+    !isValidNonce(nonce) ||
+    !isNonEmptyString(timestamp)
+  ) {
+    return errorResponse(
+      res,
+      400,
+      "INVALID_EVENT_PAYLOAD",
+      "bikeId, eventType, nonce and timestamp are required in valid formats"
     );
   }
 
   if (!["telemetry", "lock", "unlock"].includes(eventType)) {
     return errorResponse(res, 400, "INVALID_EVENT_TYPE", "Unsupported eventType");
+  }
+
+  if (!isValidDateTimeString(timestamp)) {
+    return errorResponse(res, 400, "INVALID_EVENT_PAYLOAD", "timestamp must be an RFC3339 date-time string");
+  }
+
+  if (dockId !== undefined && dockId !== null && !isValidDockId(dockId)) {
+    return errorResponse(res, 400, "INVALID_EVENT_PAYLOAD", "dockId must match expected dock ID format or be null");
   }
 
   try {
@@ -291,6 +416,8 @@ app.post("/internal/device-events", requireInternalAuth, async (req, res) => {
         lastUpdated: new Date().toISOString()
       };
 
+    const hasDockId = Object.prototype.hasOwnProperty.call(payload, "dockId");
+
     const updatedBike = {
       ...currentBike,
       lockState:
@@ -301,7 +428,7 @@ app.post("/internal/device-events", requireInternalAuth, async (req, res) => {
           : eventType === "lock"
           ? "available"
           : currentBike.availability,
-      dockId: dockId || currentBike.dockId || null,
+      dockId: hasDockId ? dockId : currentBike.dockId || null,
       lastUpdated: new Date().toISOString()
     };
 
@@ -314,6 +441,13 @@ app.post("/internal/device-events", requireInternalAuth, async (req, res) => {
 });
 
 app.post("/internal/admin/bikes/:bikeId/override-lock", requireInternalAuth, async (req, res) => {
+  if (!isValidBikeId(req.params.bikeId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "bikeId must match expected bike ID format");
+  }
+  if (hasUnexpectedQueryParams(req, [])) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  }
+
   const actor = req.auth.actor;
   if (!actor || actor.role !== "maintainer") {
     return errorResponse(res, 403, "MAINTAINER_REQUIRED", "Maintainer role required for override");
@@ -346,6 +480,17 @@ app.post("/internal/admin/bikes/:bikeId/override-lock", requireInternalAuth, asy
   } catch (err) {
     return errorResponse(res, 502, "OVERRIDE_FAILED", "Could not override lock state", err.message);
   }
+});
+
+app.use((err, _req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && Object.prototype.hasOwnProperty.call(err, "body")) {
+    return errorResponse(res, 400, "INVALID_JSON", "Malformed JSON request body");
+  }
+  return next(err);
+});
+
+app.use((err, _req, res, _next) => {
+  return errorResponse(res, 500, "INTERNAL_ERROR", "Unhandled server error", err.message);
 });
 
 const PORT = process.env.PORT || 3000;

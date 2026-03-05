@@ -23,6 +23,8 @@ paths:
       security:
         - internalMtls: []
           serviceJwt: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -42,6 +44,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Bike unavailable or duplicate idempotency key conflict
           content:
@@ -50,6 +58,18 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller is not allowed to start ride for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream or persistence failure while starting ride
           content:
             application/json:
               schema:
@@ -63,8 +83,10 @@ paths:
       security:
         - internalMtls: []
           serviceJwt: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
@@ -76,6 +98,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RideResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Ride does not exist
           content:
@@ -84,6 +118,18 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Ride already completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller is not allowed to end this ride
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream or persistence failure while ending ride
           content:
             application/json:
               schema:
@@ -104,8 +150,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RideResponse'
+        '400':
+          description: Invalid path or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Ride does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller is not allowed to view this ride
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Ride state conflict while querying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Internal query failure
           content:
             application/json:
               schema:
@@ -139,8 +215,32 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/RideResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict while reading user ride history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Internal query failure
           content:
             application/json:
               schema:
@@ -148,18 +248,29 @@ paths:
 
 components:
   parameters:
+    IdempotencyKeyHeader:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        pattern: '^[A-Za-z0-9._:-]{8,}$'
     RideIdPath:
       in: path
       name: rideId
       required: true
       schema:
         type: string
+        pattern: '^ride-[A-Za-z0-9._:-]+$'
     UserIdPath:
       in: path
       name: userId
       required: true
       schema:
         type: string
+        pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        example: u-100
 
   securitySchemes:
     serviceJwt:
@@ -209,31 +320,30 @@ components:
 
     StartRideRequest:
       type: object
-      required: [userId, bikeId, idempotencyKey]
+      additionalProperties: false
+      required: [userId, bikeId]
       properties:
         userId:
           type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
         bikeId:
           type: string
-        idempotencyKey:
-          type: string
-          minLength: 8
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
         startedAt:
           type: string
           format: date-time
 
     EndRideRequest:
       type: object
-      required: [idempotencyKey]
+      additionalProperties: false
       properties:
-        idempotencyKey:
-          type: string
-          minLength: 8
         endedAt:
           type: string
           format: date-time
         dockId:
           type: string
+          nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
 
     RideResponse:
       type: object
@@ -241,10 +351,13 @@ components:
       properties:
         rideId:
           type: string
+          pattern: '^ride-[A-Za-z0-9._:-]+$'
         userId:
           type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
         bikeId:
           type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
         status:
           type: string
           enum: [active, completed]

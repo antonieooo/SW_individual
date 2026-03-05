@@ -11,7 +11,11 @@ paths:
       summary: Gateway health
       responses:
         '200':
-          description: Healthy
+          description: Gateway is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceStatus'
 
   /api/v1/auth/login:
     post:
@@ -21,36 +25,511 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [email, password]
-              properties:
-                email:
-                  type: string
-                password:
-                  type: string
+              $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
           description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid login payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/rides/start:
-    post:
-      summary: Start ride
+  /api/v1/users/{userId}/profile:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      summary: Fetch user profile
       security:
         - userJwt: []
       responses:
+        '200':
+          description: Profile returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Invalid path or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid user token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      summary: Update user profile
+      security:
+        - userJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfilePatch'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Invalid profile patch payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid user token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/users/{userId}/dashboard:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      summary: Fetch user dashboard
+      security:
+        - userJwt: []
+      responses:
+        '200':
+          description: Dashboard returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDashboardResponse'
+        '400':
+          description: Invalid path or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid user token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/users/{userId}/rides:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 20
+    get:
+      summary: List rides for one user
+      security:
+        - userJwt: []
+      responses:
+        '200':
+          description: Rides returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RideListResponse'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid user token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Ride history conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/rides/start:
+    post:
+      summary: Start a ride
+      security:
+        - userJwt: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartRideRequest'
+      responses:
         '201':
           description: Ride started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RideResponse'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid user token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Role or ownership forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Bike or user not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict while starting ride
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/rides/{rideId}/end:
+    parameters:
+      - $ref: '#/components/parameters/RideIdPath'
+    post:
+      summary: End a ride
+      security:
+        - userJwt: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EndRideRequest'
+      responses:
+        '200':
+          description: Ride ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RideResponse'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid user token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Role or ownership forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ride not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict while ending ride
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/bikes/{bikeId}/override-lock:
+    parameters:
+      - $ref: '#/components/parameters/BikeIdPath'
+    post:
+      summary: Maintainer lock override
+      security:
+        - userJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverrideLockRequest'
+      responses:
+        '200':
+          description: Lock state updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BikeState'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid user token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Maintainer role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/device/events:
+    post:
+      summary: Submit device event
+      security:
+        - deviceCert: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+      responses:
+        '202':
+          description: Device event accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceEventAccepted'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid device certificate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Duplicate device nonce
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/partner/reports/daily-usage:
     get:
-      summary: Partner analytics query
+      summary: Query partner report
       security:
         - partnerApiKey: []
+      parameters:
+        - in: query
+          name: date
+          required: false
+          schema:
+            type: string
+            format: date
       responses:
         '200':
           description: Report returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyUsageReport'
+        '400':
+          description: Invalid date query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid partner API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
+  parameters:
+    UserIdPath:
+      in: path
+      name: userId
+      required: true
+      schema:
+        type: string
+        pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        example: u-100
+    RideIdPath:
+      in: path
+      name: rideId
+      required: true
+      schema:
+        type: string
+        pattern: '^ride-[A-Za-z0-9._:-]+$'
+        example: ride-100
+    BikeIdPath:
+      in: path
+      name: bikeId
+      required: true
+      schema:
+        type: string
+        pattern: '^bike-[A-Za-z0-9._:-]+$'
+        example: bike-001
+    IdempotencyKeyHeader:
+      in: header
+      name: x-idempotency-key
+      required: false
+      schema:
+        type: string
+        minLength: 8
+        pattern: '^[A-Za-z0-9._:-]{8,}$'
+
   securitySchemes:
     userJwt:
       type: http
@@ -60,3 +539,278 @@ components:
       type: apiKey
       in: header
       name: x-api-key
+    deviceCert:
+      type: apiKey
+      in: header
+      name: x-device-cert
+
+  schemas:
+    ServiceStatus:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: api-gateway-service
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+              oneOf:
+                - type: object
+                - type: array
+                  items: {}
+                - type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+
+    LoginResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          minimum: 1
+        user:
+          $ref: '#/components/schemas/UserProfile'
+
+    UserProfile:
+      type: object
+      required: [id, role, email, name, phone]
+      properties:
+        id:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        role:
+          type: string
+          enum: [user, maintainer]
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          minLength: 2
+          pattern: "^[A-Za-z][A-Za-z0-9 .'-]{1,63}$"
+        phone:
+          type: string
+          pattern: '^[+]?[0-9\- ]{7,20}$'
+
+    UserProfilePatch:
+      type: object
+      additionalProperties: false
+      anyOf:
+        - required: [name]
+        - required: [phone]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          pattern: "^[A-Za-z][A-Za-z0-9 .'-]{1,63}$"
+        phone:
+          type: string
+          pattern: '^[+]?[0-9\- ]{7,20}$'
+
+    RideResponse:
+      type: object
+      required: [rideId, userId, bikeId, status, startedAt, amount]
+      properties:
+        rideId:
+          type: string
+          pattern: '^ride-[A-Za-z0-9._:-]+$'
+        userId:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        bikeId:
+          type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
+        status:
+          type: string
+          enum: [active, completed]
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        amount:
+          type: number
+        currency:
+          type: string
+          example: GBP
+
+    RideListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RideResponse'
+
+    PaymentSummary:
+      type: object
+      required: [userId, currency, totalCharged, paymentCount]
+      properties:
+        userId:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        currency:
+          type: string
+        totalCharged:
+          type: number
+        paymentCount:
+          type: integer
+          minimum: 0
+
+    UserDashboardResponse:
+      type: object
+      required: [profile, recentRides, billingSummary]
+      properties:
+        profile:
+          $ref: '#/components/schemas/UserProfile'
+        recentRides:
+          type: array
+          items:
+            $ref: '#/components/schemas/RideResponse'
+        billingSummary:
+          $ref: '#/components/schemas/PaymentSummary'
+
+    StartRideRequest:
+      type: object
+      additionalProperties: false
+      required: [bikeId]
+      properties:
+        bikeId:
+          type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
+
+    EndRideRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        dockId:
+          type: string
+          nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
+
+    OverrideLockRequest:
+      type: object
+      required: [lockState]
+      properties:
+        lockState:
+          type: string
+          enum: [locked, unlocked]
+
+    BikeState:
+      type: object
+      required: [bikeId, availability, lockState, lastUpdated]
+      properties:
+        bikeId:
+          type: string
+        availability:
+          type: string
+          enum: [available, reserved, unavailable]
+        lockState:
+          type: string
+          enum: [locked, unlocked]
+        dockId:
+          type: string
+          nullable: true
+        lastUpdated:
+          type: string
+          format: date-time
+
+    DeviceEventRequest:
+      type: object
+      additionalProperties: false
+      required: [bikeId, eventType, nonce, timestamp]
+      properties:
+        bikeId:
+          type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
+        eventType:
+          type: string
+          enum: [telemetry, lock, unlock]
+        nonce:
+          type: string
+          minLength: 6
+          pattern: '^[A-Za-z0-9._:-]{6,128}$'
+        timestamp:
+          type: string
+          format: date-time
+        dockId:
+          type: string
+          nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
+
+    DeviceEventAccepted:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+          example: true
+
+    DailyUsageReport:
+      type: object
+      required:
+        - date
+        - totalRides
+        - uniqueUsers
+        - activeBikes
+        - generatedAt
+        - minimumAggregationThreshold
+        - suppressed
+      properties:
+        date:
+          type: string
+          format: date
+        totalRides:
+          type: integer
+          minimum: 0
+        uniqueUsers:
+          type: integer
+          minimum: 0
+        activeBikes:
+          type: integer
+          minimum: 0
+        generatedAt:
+          type: string
+          format: date-time
+        minimumAggregationThreshold:
+          type: integer
+          minimum: 1
+        suppressed:
+          type: boolean

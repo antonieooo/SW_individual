@@ -24,6 +24,8 @@ const allowedSchemas = {
   [SERVICE_NAME]: ["user", "ride", "inventory", "payment", "analytics"]
 };
 
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 const schemas = {
   user: {
     users: new Map([
@@ -216,13 +218,30 @@ function getCollection(schema, collection) {
 }
 
 function asDateOnly(value) {
-  return new Date(value).toISOString().slice(0, 10);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString().slice(0, 10);
+}
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isValidDateString(value) {
+  if (typeof value !== "string" || !DATE_PATTERN.test(value)) {
+    return false;
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function refreshDailyAnalytics(date) {
   const targetDate = date || new Date().toISOString().slice(0, 10);
   const rides = Array.from(schemas.ride.rides.values()).filter((ride) => {
-    return ride.startedAt && asDateOnly(ride.startedAt) === targetDate;
+    const rideDate = ride.startedAt ? asDateOnly(ride.startedAt) : null;
+    return rideDate === targetDate;
   });
 
   const uniqueUsers = new Set(rides.map((ride) => ride.userId)).size;
@@ -257,9 +276,13 @@ app.get("/status", (_req, res) => {
 
 app.post("/internal/db/:schema/:collection/get", requireInternalAuth, ensureSchemaAccess, (req, res) => {
   const { schema, collection } = req.params;
-  const { id } = req.body || {};
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+    return errorResponse(res, 400, "INVALID_REQUEST", "Request body must be an object");
+  }
 
-  if (!id) {
+  const { id } = req.body;
+
+  if (!isNonEmptyString(id)) {
     return errorResponse(res, 400, "ID_REQUIRED", "id is required");
   }
 
@@ -278,7 +301,18 @@ app.post("/internal/db/:schema/:collection/get", requireInternalAuth, ensureSche
 
 app.post("/internal/db/:schema/:collection/list", requireInternalAuth, ensureSchemaAccess, (req, res) => {
   const { schema, collection } = req.params;
-  const { field, value, limit = 100 } = req.body || {};
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+    return errorResponse(res, 400, "INVALID_REQUEST", "Request body must be an object");
+  }
+
+  const { field, value, limit = 100 } = req.body;
+  const numericLimit = Number(limit);
+  if (!Number.isInteger(numericLimit) || numericLimit < 1 || numericLimit > 1000) {
+    return errorResponse(res, 400, "INVALID_LIMIT", "limit must be an integer between 1 and 1000");
+  }
+  if (field !== undefined && !isNonEmptyString(field)) {
+    return errorResponse(res, 400, "INVALID_FIELD", "field must be a non-empty string when provided");
+  }
 
   const store = getCollection(schema, collection);
   if (!store) {
@@ -290,14 +324,18 @@ app.post("/internal/db/:schema/:collection/list", requireInternalAuth, ensureSch
     items = items.filter((entry) => entry[field] === value);
   }
 
-  return res.json({ items: items.slice(0, Number(limit) || 100) });
+  return res.json({ items: items.slice(0, numericLimit) });
 });
 
 app.post("/internal/db/:schema/:collection/upsert", requireInternalAuth, ensureSchemaAccess, (req, res) => {
   const { schema, collection } = req.params;
-  const { id, document } = req.body || {};
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+    return errorResponse(res, 400, "INVALID_UPSERT", "Request body must be an object");
+  }
 
-  if (!id || !document || typeof document !== "object") {
+  const { id, document } = req.body;
+
+  if (!isNonEmptyString(id) || !document || typeof document !== "object" || Array.isArray(document)) {
     return errorResponse(res, 400, "INVALID_UPSERT", "id and document are required");
   }
 
@@ -320,7 +358,15 @@ app.post("/internal/db/analytics/refresh", requireInternalAuth, (req, res) => {
     return errorResponse(res, 403, "DB_CREDENTIAL_INVALID", "Invalid DB credential for schema analytics");
   }
 
-  const date = req.body && req.body.date;
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+    return errorResponse(res, 400, "INVALID_REQUEST", "Request body must be an object");
+  }
+
+  const date = req.body.date;
+  if (date !== undefined && !isValidDateString(date)) {
+    return errorResponse(res, 400, "INVALID_DATE", "date must be a valid YYYY-MM-DD value");
+  }
+
   const report = refreshDailyAnalytics(date);
   return res.json(report);
 });
@@ -335,13 +381,29 @@ app.get("/internal/db/analytics/daily-usage", requireInternalAuth, (req, res) =>
     return errorResponse(res, 403, "DB_CREDENTIAL_INVALID", "Invalid DB credential for schema analytics");
   }
 
-  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const rawDate = req.query.date;
+  const date = rawDate === undefined ? new Date().toISOString().slice(0, 10) : rawDate;
+  if (!isValidDateString(date)) {
+    return errorResponse(res, 400, "INVALID_DATE", "date must be a valid YYYY-MM-DD value");
+  }
+
   const report = schemas.analytics.dailyReports.get(date);
   if (!report) {
     return errorResponse(res, 404, "REPORT_NOT_FOUND", `No report for date ${date}`);
   }
 
   return res.json(report);
+});
+
+app.use((err, _req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && Object.prototype.hasOwnProperty.call(err, "body")) {
+    return errorResponse(res, 400, "INVALID_JSON", "Malformed JSON request body");
+  }
+  return next(err);
+});
+
+app.use((err, _req, res, _next) => {
+  return errorResponse(res, 500, "INTERNAL_ERROR", "Unhandled server error", err.message);
 });
 
 function buildInternalToken() {

@@ -154,6 +154,18 @@ async function refreshDailyReport(date) {
   });
 }
 
+function isValidDateString(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (!datePattern.test(value)) {
+    return false;
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 app.get("/status", (_req, res) => {
   res.json({
     status: "ok",
@@ -163,7 +175,12 @@ app.get("/status", (_req, res) => {
 });
 
 app.get("/internal/reports/daily-usage", requireInternalAuth, async (req, res) => {
-  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const rawDate = req.query.date;
+  const date = rawDate === undefined ? new Date().toISOString().slice(0, 10) : rawDate;
+
+  if (!isValidDateString(date)) {
+    return errorResponse(res, 400, "INVALID_DATE", "date must be a valid YYYY-MM-DD value");
+  }
 
   try {
     let result = await loadDailyReport(date);
@@ -189,6 +206,17 @@ app.get("/internal/reports/daily-usage", requireInternalAuth, async (req, res) =
   } catch (err) {
     return errorResponse(res, 502, "ANALYTICS_QUERY_FAILED", "Could not fetch daily report", err.message);
   }
+});
+
+app.use((err, _req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && Object.prototype.hasOwnProperty.call(err, "body")) {
+    return errorResponse(res, 400, "INVALID_JSON", "Malformed JSON request body");
+  }
+  return next(err);
+});
+
+app.use((err, _req, res, _next) => {
+  return errorResponse(res, 500, "INTERNAL_ERROR", "Unhandled server error", err.message);
 });
 
 const PORT = process.env.PORT || 3000;

@@ -32,6 +32,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BikeState'
+        '400':
+          description: Invalid path or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Bike not found
           content:
@@ -54,6 +66,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BikeState'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Bike unavailable
           content:
@@ -75,9 +105,12 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 dockId:
                   type: string
+                  nullable: true
+                  pattern: '^dock-[A-Za-z0-9._:-]+$'
       responses:
         '200':
           description: Bike released
@@ -85,6 +118,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BikeState'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid release payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Bike not found
           content:
@@ -123,6 +168,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid internal authentication or device certificate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Replayed nonce detected
           content:
@@ -156,8 +207,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BikeState'
+        '401':
+          description: Missing or invalid internal authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Maintainer role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid override payload
           content:
             application/json:
               schema:
@@ -177,6 +240,8 @@ components:
       required: true
       schema:
         type: string
+        pattern: '^bike-[A-Za-z0-9._:-]+$'
+        example: bike-001
 
   securitySchemes:
     serviceJwt:
@@ -235,6 +300,7 @@ components:
       properties:
         bikeId:
           type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
         availability:
           type: string
           enum: [available, reserved, unavailable]
@@ -244,25 +310,30 @@ components:
         dockId:
           type: string
           nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
         lastUpdated:
           type: string
           format: date-time
 
     DeviceEventRequest:
       type: object
+      additionalProperties: false
       required: [bikeId, eventType, nonce, timestamp]
       properties:
         bikeId:
           type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
         eventType:
           type: string
           enum: [telemetry, lock, unlock]
         nonce:
           type: string
           minLength: 6
+          pattern: '^[A-Za-z0-9._:-]{6,128}$'
         timestamp:
           type: string
           format: date-time
         dockId:
           type: string
           nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
