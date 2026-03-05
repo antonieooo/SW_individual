@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if command -v schemathesis >/dev/null 2>&1; then
   ST_CMD=(schemathesis)
+elif [[ -x "$ROOT_DIR/.venv-schemathesis/bin/python3" ]]; then
+  ST_CMD=("$ROOT_DIR/.venv-schemathesis/bin/python3" -m schemathesis)
 elif [[ -x "$ROOT_DIR/.venv-schemathesis/bin/schemathesis" ]]; then
   ST_CMD=("$ROOT_DIR/.venv-schemathesis/bin/schemathesis")
 elif python3 -c "import schemathesis" >/dev/null 2>&1; then

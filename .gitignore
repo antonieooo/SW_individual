@@ -2,3 +2,6 @@ node_modules/
 *.log
 openapi-lint*.log
 *.Zone.Identifier
+.venv-schemathesis/
+.venv/
+.hypothesis/

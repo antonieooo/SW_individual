@@ -87,6 +87,7 @@ jobs:
       - name: Install Schemathesis
         run: |
           set -euo pipefail
+          rm -rf .venv-schemathesis .hypothesis
           python3 -m venv .venv-schemathesis
           .venv-schemathesis/bin/pip install --upgrade pip
           .venv-schemathesis/bin/pip install schemathesis
