@@ -6,12 +6,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if command -v schemathesis >/dev/null 2>&1; then
   ST_CMD=(schemathesis)
-elif [[ -x "$ROOT_DIR/.venv-schemathesis/bin/python3" ]]; then
-  ST_CMD=("$ROOT_DIR/.venv-schemathesis/bin/python3" -m schemathesis)
 elif [[ -x "$ROOT_DIR/.venv-schemathesis/bin/schemathesis" ]]; then
   ST_CMD=("$ROOT_DIR/.venv-schemathesis/bin/schemathesis")
+elif [[ -x "$ROOT_DIR/.venv-schemathesis/bin/st" ]]; then
+  ST_CMD=("$ROOT_DIR/.venv-schemathesis/bin/st")
+elif [[ -x "$ROOT_DIR/.venv-schemathesis/bin/python3" ]] && \
+  "$ROOT_DIR/.venv-schemathesis/bin/python3" -c "import schemathesis.cli" >/dev/null 2>&1; then
+  ST_CMD=("$ROOT_DIR/.venv-schemathesis/bin/python3" -m schemathesis.cli)
 elif python3 -c "import schemathesis" >/dev/null 2>&1; then
-  ST_CMD=(python3 -m schemathesis)
+  ST_CMD=(python3 -m schemathesis.cli)
 else
   echo "Schemathesis is not installed. Install with:"
   echo "  python3 -m venv .venv-schemathesis"
