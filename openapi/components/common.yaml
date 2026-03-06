@@ -604,6 +604,7 @@ components:
         id:
           type: string
           minLength: 1
+          pattern: '^.*\S.*$'
 
     DbListRequest:
       type: object
@@ -611,6 +612,7 @@ components:
         field:
           type: string
           minLength: 1
+          pattern: '^.*\S.*$'
         value: {}
         limit:
           type: integer
@@ -625,6 +627,7 @@ components:
         id:
           type: string
           minLength: 1
+          pattern: '^.*\S.*$'
         document:
           type: object
           additionalProperties: true
