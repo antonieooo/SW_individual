@@ -5,3 +5,4 @@ openapi-lint*.log
 .venv-schemathesis/
 .venv/
 .hypothesis/
+openapi/tests/smoke/logs/

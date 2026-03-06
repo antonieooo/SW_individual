@@ -1,4 +1,19 @@
 {
+  "scripts": {
+    "test:unit": "node --test openapi/tests/unit/*.test.js",
+    "test:smoke": "bash openapi/tests/smoke/run_smoke.sh",
+    "test:contract:all": "bash openapi/tests/schemathesis/run_task_d.sh",
+    "test:contract:auth-negative": "bash openapi/tests/schemathesis/run_auth_negative.sh",
+    "test:contract:data-negative": "bash openapi/tests/schemathesis/run_negative_data.sh",
+    "test:contract:one": "bash openapi/tests/schemathesis/run_one_service.sh",
+    "test:contract:gateway": "bash openapi/tests/schemathesis/run_api_gateway_service.sh",
+    "test:contract:user": "bash openapi/tests/schemathesis/run_user_service.sh",
+    "test:contract:ride": "bash openapi/tests/schemathesis/run_ride_service.sh",
+    "test:contract:inventory": "bash openapi/tests/schemathesis/run_bike_inventory_service.sh",
+    "test:contract:payment": "bash openapi/tests/schemathesis/run_payment_service.sh",
+    "test:contract:partner-analytics": "bash openapi/tests/schemathesis/run_partner_analytics_service.sh",
+    "test:contract:db-cluster": "bash openapi/tests/schemathesis/run_database_cluster_service.sh"
+  },
   "devDependencies": {
     "swagger-cli": "^4.0.4"
   }

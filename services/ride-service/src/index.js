@@ -6,6 +6,15 @@ app.use(express.json());
 
 const SERVICE_NAME = "ride-service";
 const TOKEN_SECRET = process.env.SERVICE_TOKEN_SECRET || "citybike-shared-secret";
+const {
+  calculateRideAmount,
+  isValidIdempotencyKey,
+  isValidUserId,
+  isValidBikeId,
+  isValidRideId,
+  isValidDockId,
+  isValidDateTimeString
+} = require("./validation");
 
 const serviceUrls = {
   database: process.env.DATABASE_CLUSTER_URL || "http://database-cluster-service:3000",
@@ -208,35 +217,6 @@ function sanitizeRide(ride) {
   };
 }
 
-function isValidIdempotencyKey(value) {
-  return typeof value === "string" && /^[A-Za-z0-9._:-]{8,}$/.test(value);
-}
-
-function isValidUserId(value) {
-  return typeof value === "string" && /^[um]-[A-Za-z0-9._:-]+$/.test(value);
-}
-
-function isValidBikeId(value) {
-  return typeof value === "string" && /^bike-[A-Za-z0-9._:-]+$/.test(value);
-}
-
-function isValidRideId(value) {
-  return typeof value === "string" && /^ride-[A-Za-z0-9._:-]+$/.test(value);
-}
-
-function isValidDockId(value) {
-  return typeof value === "string" && /^dock-[A-Za-z0-9._:-]+$/.test(value);
-}
-
-function isValidDateTimeString(value) {
-  if (typeof value !== "string") {
-    return false;
-  }
-  const dateTimePattern =
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-  return dateTimePattern.test(value) && !Number.isNaN(Date.parse(value));
-}
-
 function getQueryKeys(req) {
   const parsedKeys = Object.keys(req.query || {});
   const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : "";
@@ -281,14 +261,6 @@ function ensurePayloadKeys(res, payload, allowedKeys, code, message) {
   }
   errorResponse(res, 400, code, message);
   return false;
-}
-
-function calculateRideAmount(startedAtIso, endedAtIso) {
-  const startedAt = new Date(startedAtIso).getTime();
-  const endedAt = new Date(endedAtIso).getTime();
-  const minutes = Math.max(1, Math.ceil((endedAt - startedAt) / 60000));
-  const amount = 1 + Math.max(0, minutes - 5) * 0.2;
-  return Number(amount.toFixed(2));
 }
 
 app.get("/status", (_req, res) => {
@@ -715,7 +687,20 @@ app.use((err, _req, res, _next) => {
   return errorResponse(res, 500, "INTERNAL_ERROR", "Unhandled server error", err.message);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} listening on ${PORT}`);
-});
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`${SERVICE_NAME} listening on ${PORT}`);
+  });
+}
+
+module.exports = {
+  app,
+  calculateRideAmount,
+  isValidIdempotencyKey,
+  isValidUserId,
+  isValidBikeId,
+  isValidRideId,
+  isValidDockId,
+  isValidDateTimeString
+};

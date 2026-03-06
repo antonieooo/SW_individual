@@ -144,6 +144,12 @@ jobs:
           wait_for_status partner-analytics-service 3005
           wait_for_status database-cluster-service 3006
 
+      # Basic end-to-end smoke assertions for key API paths and auth headers.
+      - name: Run smoke test script
+        run: |
+          set -euo pipefail
+          bash openapi/tests/smoke/run_smoke.sh
+
       # Negative auth tests: protected endpoints must reject missing/invalid auth.
       - name: Run negative authentication checks
         run: |
@@ -177,6 +183,16 @@ jobs:
         with:
           name: schemathesis-logs-${{ github.run_id }}
           path: openapi/tests/schemathesis/logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Upload smoke logs to keep a compact evidence trail for quick failures.
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-${{ github.run_id }}
+          path: openapi/tests/smoke/logs/
           if-no-files-found: warn
           retention-days: 14
 

@@ -81,6 +81,12 @@ curl -k -sS "https://localhost:3000/api/v1/partner/reports/daily-usage?date=$(da
   -H 'x-api-key: partner-a-demo-key'
 ```
 
+Automated smoke script (recommended):
+
+```bash
+bash openapi/tests/smoke/run_smoke.sh
+```
+
 ## OpenAPI Validation
 
 Install root dependencies once:
@@ -119,6 +125,14 @@ bash openapi/tests/schemathesis/run_negative_data.sh
 bash openapi/tests/schemathesis/run_task_d.sh
 ```
 
+Equivalent npm scripts:
+
+```bash
+npm run test:contract:auth-negative
+npm run test:contract:data-negative
+npm run test:contract:all
+```
+
 Run a single service only:
 
 ```bash
@@ -135,10 +149,41 @@ Supported service names:
 - `partner-analytics-service`
 - `database-cluster-service`
 
+Per-service shortcut scripts:
+
+```bash
+bash openapi/tests/schemathesis/run_api_gateway_service.sh
+bash openapi/tests/schemathesis/run_user_service.sh
+bash openapi/tests/schemathesis/run_ride_service.sh
+bash openapi/tests/schemathesis/run_bike_inventory_service.sh
+bash openapi/tests/schemathesis/run_payment_service.sh
+bash openapi/tests/schemathesis/run_partner_analytics_service.sh
+bash openapi/tests/schemathesis/run_database_cluster_service.sh
+```
+
+Equivalent npm scripts:
+
+```bash
+npm run test:contract:gateway
+npm run test:contract:user
+npm run test:contract:ride
+npm run test:contract:inventory
+npm run test:contract:payment
+npm run test:contract:partner-analytics
+npm run test:contract:db-cluster
+```
+
+Unit tests (fast, local):
+
+```bash
+npm run test:unit
+```
+
 ## Logs
 
 - Full suite logs: `openapi/tests/schemathesis/logs/<timestamp>/`
 - Single service logs: `openapi/tests/schemathesis/logs_per_service/<timestamp>/`
+- Smoke logs: `openapi/tests/smoke/logs/<timestamp>/`
 
 ## Cleanup
 

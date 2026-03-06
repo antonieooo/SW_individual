@@ -448,7 +448,19 @@ app.use((err, _req, res, _next) => {
   return errorResponse(res, 500, "INTERNAL_ERROR", "Unhandled server error", err.message);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} listening on ${PORT}`);
-});
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`${SERVICE_NAME} listening on ${PORT}`);
+  });
+}
+
+module.exports = {
+  app,
+  isValidUserId,
+  isValidRideId,
+  isValidPaymentBindingId,
+  isValidPaymentId,
+  isValidIdempotencyKey,
+  isIsoCurrency
+};
