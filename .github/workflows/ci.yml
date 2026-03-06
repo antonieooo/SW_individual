@@ -1,5 +1,6 @@
 name: CityBike CI
 
+# Run CI on both direct pushes and pull requests.
 on:
   push:
   pull_request:
@@ -8,10 +9,12 @@ permissions:
   contents: read
 
 concurrency:
+  # Avoid wasting runner time: keep only the latest run per ref.
   group: citybike-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Stage 1: fast static checks before any container build.
   validate-contracts:
     name: Validate Contracts And Service Entrypoints
     runs-on: ubuntu-latest
@@ -29,6 +32,7 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
+      # Validate OpenAPI syntax/structure for all documented services.
       - name: Validate all OpenAPI specifications
         run: |
           set -euo pipefail
@@ -45,6 +49,7 @@ jobs:
             npx swagger-cli validate "$f"
           done
 
+      # Catch JavaScript syntax errors early (without running services).
       - name: Check JavaScript syntax for all services
         run: |
           set -euo pipefail
@@ -61,6 +66,7 @@ jobs:
             node --check "$f"
           done
 
+  # Stage 2: deploy to a temporary staging environment and run contract tests.
   staging-contract-tests:
     name: Build Deploy To Staging And Run Contract Tests
     runs-on: ubuntu-latest
@@ -84,6 +90,7 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
+      # Create an isolated Python environment used by Schemathesis CLI.
       - name: Install Schemathesis
         run: |
           set -euo pipefail
@@ -92,11 +99,13 @@ jobs:
           .venv-schemathesis/bin/pip install --upgrade pip
           .venv-schemathesis/bin/pip install schemathesis
 
+      # Build images from current commit and start all services.
       - name: Build and deploy services to staging (Docker Compose)
         run: |
           set -euo pipefail
           docker compose up -d --build
 
+      # Readiness gate: fail fast if any service cannot answer /status.
       - name: Smoke check all service status endpoints
         run: |
           set -euo pipefail
@@ -135,21 +144,25 @@ jobs:
           wait_for_status partner-analytics-service 3005
           wait_for_status database-cluster-service 3006
 
+      # Negative auth tests: protected endpoints must reject missing/invalid auth.
       - name: Run negative authentication checks
         run: |
           set -euo pipefail
           bash openapi/tests/schemathesis/run_auth_negative.sh
 
+      # Negative payload tests: malformed/out-of-contract inputs should be rejected.
       - name: Run negative payload checks
         run: |
           set -euo pipefail
           bash openapi/tests/schemathesis/run_negative_data.sh
 
+      # Full contract test suite across all services.
       - name: Run full Schemathesis task suite
         run: |
           set -euo pipefail
           bash openapi/tests/schemathesis/run_task_d.sh
 
+      # Always collect runtime logs to support failure diagnosis.
       - name: Save docker compose logs
         if: always()
         run: |
@@ -157,6 +170,7 @@ jobs:
           docker compose ps
           docker compose logs --no-color > ci-docker-compose.log
 
+      # Upload Schemathesis per-service logs as CI artifacts.
       - name: Upload Schemathesis logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -166,6 +180,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # Upload compose logs for debugging startup/runtime issues.
       - name: Upload docker compose logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -175,6 +190,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # Always clean up containers/volumes to keep runners deterministic.
       - name: Teardown staging environment
         if: always()
         run: |
