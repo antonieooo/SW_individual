@@ -2,100 +2,68 @@ openapi: 3.0.3
 info:
   title: Bike Inventory Service API
   version: 1.0.0
-  description: Internal fleet state APIs and device event ingestion.
 servers:
   - url: http://localhost:3003
+
 paths:
   /status:
     get:
-      summary: Service health status
       responses:
         '200':
-          description: Bike inventory service is healthy
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ServiceStatus'
+                $ref: './components/common.yaml#/components/schemas/ServiceStatus'
 
   /internal/bikes/{bikeId}:
     parameters:
       - $ref: '#/components/parameters/BikeIdPath'
     get:
-      summary: Fetch bike state
       security:
         - internalMtls: []
           serviceJwt: []
       responses:
         '200':
-          description: Bike found
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BikeState'
+                $ref: './components/common.yaml#/components/schemas/BikeState'
         '400':
-          description: Invalid path or query
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Bike not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
 
   /internal/bikes/{bikeId}/reserve:
     parameters:
       - $ref: '#/components/parameters/BikeIdPath'
     post:
-      summary: Reserve bike for ride start
       security:
         - internalMtls: []
           serviceJwt: []
       responses:
         '200':
-          description: Bike reserved
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BikeState'
-        '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: './components/common.yaml#/components/schemas/BikeState'
         '400':
-          description: Invalid request payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Bike not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: Bike unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
 
   /internal/bikes/{bikeId}/release:
     parameters:
       - $ref: '#/components/parameters/BikeIdPath'
     post:
-      summary: Release bike after ride completion
       security:
         - internalMtls: []
           serviceJwt: []
@@ -104,42 +72,23 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              properties:
-                dockId:
-                  type: string
-                  nullable: true
-                  pattern: '^dock-[A-Za-z0-9._:-]+$'
+              $ref: './components/common.yaml#/components/schemas/ReleaseBikeRequest'
       responses:
         '200':
-          description: Bike released
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BikeState'
-        '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: './components/common.yaml#/components/schemas/BikeState'
         '400':
-          description: Invalid release payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Bike not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
 
   /internal/device-events:
     post:
-      summary: Ingest device-originated telemetry and lock state updates
       security:
         - internalMtls: []
           serviceJwt: []
@@ -149,43 +98,25 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DeviceEventRequest'
+              $ref: './components/common.yaml#/components/schemas/DeviceEventRequest'
       responses:
         '202':
-          description: Device event accepted
+          description: Accepted
           content:
             application/json:
               schema:
-                type: object
-                required: [accepted]
-                properties:
-                  accepted:
-                    type: boolean
-                    example: true
+                $ref: './components/common.yaml#/components/schemas/DeviceEventAccepted'
         '400':
-          description: Invalid event data
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication or device certificate
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '409':
-          description: Replayed nonce detected
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
 
   /internal/admin/bikes/{bikeId}/override-lock:
     parameters:
       - $ref: '#/components/parameters/BikeIdPath'
     post:
-      summary: Maintainer override for lock state
       security:
         - internalMtls: []
           serviceJwt: []
@@ -194,146 +125,44 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [lockState]
-              properties:
-                lockState:
-                  type: string
-                  enum: [locked, unlocked]
+              $ref: './components/common.yaml#/components/schemas/OverrideLockRequest'
       responses:
         '200':
-          description: Lock state changed
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BikeState'
-        '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Maintainer role required
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: './components/common.yaml#/components/schemas/BikeState'
         '400':
-          description: Invalid override payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Bike not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
 
 components:
   parameters:
     BikeIdPath:
-      in: path
-      name: bikeId
-      required: true
-      schema:
-        type: string
-        pattern: '^bike-[A-Za-z0-9._:-]+$'
-        example: bike-001
+      $ref: './components/common.yaml#/components/parameters/BikeIdPath'
 
   securitySchemes:
     serviceJwt:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+      $ref: './components/common.yaml#/components/securitySchemes/serviceJwt'
     internalMtls:
-      type: apiKey
-      in: header
-      name: x-internal-mtls
-      description: Local development simulation for mTLS.
+      $ref: './components/common.yaml#/components/securitySchemes/internalMtls'
     deviceCert:
-      type: apiKey
-      in: header
-      name: x-device-cert
-      description: Device certificate identity for TB3 in this MVP.
+      $ref: './components/common.yaml#/components/securitySchemes/deviceCert'
 
-  schemas:
-    ServiceStatus:
-      type: object
-      required: [status, service, timestamp]
-      properties:
-        status:
-          type: string
-          example: ok
-        service:
-          type: string
-          example: bike-inventory-service
-        timestamp:
-          type: string
-          format: date-time
-
-    ErrorResponse:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message]
-          properties:
-            code:
-              type: string
-            message:
-              type: string
-            details:
-              nullable: true
-              oneOf:
-                - type: object
-                - type: array
-                  items: {}
-                - type: string
-
-    BikeState:
-      type: object
-      required: [bikeId, availability, lockState, lastUpdated]
-      properties:
-        bikeId:
-          type: string
-          pattern: '^bike-[A-Za-z0-9._:-]+$'
-        availability:
-          type: string
-          enum: [available, reserved, unavailable]
-        lockState:
-          type: string
-          enum: [locked, unlocked]
-        dockId:
-          type: string
-          nullable: true
-          pattern: '^dock-[A-Za-z0-9._:-]+$'
-        lastUpdated:
-          type: string
-          format: date-time
-
-    DeviceEventRequest:
-      type: object
-      additionalProperties: false
-      required: [bikeId, eventType, nonce, timestamp]
-      properties:
-        bikeId:
-          type: string
-          pattern: '^bike-[A-Za-z0-9._:-]+$'
-        eventType:
-          type: string
-          enum: [telemetry, lock, unlock]
-        nonce:
-          type: string
-          minLength: 6
-          pattern: '^[A-Za-z0-9._:-]{6,128}$'
-        timestamp:
-          type: string
-          format: date-time
-        dockId:
-          type: string
-          nullable: true
-          pattern: '^dock-[A-Za-z0-9._:-]+$'
+  responses:
+    BadRequest:
+      $ref: './components/common.yaml#/components/responses/BadRequest'
+    Unauthorized:
+      $ref: './components/common.yaml#/components/responses/Unauthorized'
+    Forbidden:
+      $ref: './components/common.yaml#/components/responses/Forbidden'
+    NotFound:
+      $ref: './components/common.yaml#/components/responses/NotFound'
+    Conflict:
+      $ref: './components/common.yaml#/components/responses/Conflict'

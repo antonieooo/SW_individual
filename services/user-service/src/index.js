@@ -195,10 +195,6 @@ function canAccessUser(req, targetUserId) {
   return actor.userId === targetUserId;
 }
 
-function isNonEmptyString(value) {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
 function isValidUserId(value) {
   return typeof value === "string" && /^[um]-[A-Za-z0-9._:-]+$/.test(value);
 }
@@ -228,6 +224,13 @@ function hasUnexpectedQueryParams(req, allowedKeys) {
   return getQueryKeys(req).some((key) => !key || !allowed.has(key));
 }
 
+function rejectUnexpectedQueryParams(req, res, next) {
+  if (!hasUnexpectedQueryParams(req, [])) {
+    return next();
+  }
+  return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+}
+
 function sanitizeUser(user) {
   return {
     id: user.id,
@@ -246,10 +249,9 @@ app.get("/status", (_req, res) => {
   });
 });
 
-app.post("/internal/auth/login", requireInternalAuth, async (req, res) => {
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
-  }
+app.use("/internal", requireInternalAuth, rejectUnexpectedQueryParams);
+
+app.post("/internal/auth/login", async (req, res) => {
   const { email, password } = req.body || {};
 
   if (!email || !password) {
@@ -270,13 +272,10 @@ app.post("/internal/auth/login", requireInternalAuth, async (req, res) => {
   }
 });
 
-app.get("/internal/users/:userId/profile", requireInternalAuth, async (req, res) => {
+app.get("/internal/users/:userId/profile", async (req, res) => {
   const { userId } = req.params;
   if (!isValidUserId(userId)) {
     return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
-  }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
   }
   if (!canAccessUser(req, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "Access to this profile is forbidden");
@@ -294,13 +293,10 @@ app.get("/internal/users/:userId/profile", requireInternalAuth, async (req, res)
   }
 });
 
-app.patch("/internal/users/:userId/profile", requireInternalAuth, async (req, res) => {
+app.patch("/internal/users/:userId/profile", async (req, res) => {
   const { userId } = req.params;
   if (!isValidUserId(userId)) {
     return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
-  }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
   }
   if (!canAccessUser(req, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "Profile update forbidden");
@@ -360,13 +356,10 @@ app.patch("/internal/users/:userId/profile", requireInternalAuth, async (req, re
   }
 });
 
-app.get("/internal/users/:userId/payment-binding", requireInternalAuth, async (req, res) => {
+app.get("/internal/users/:userId/payment-binding", async (req, res) => {
   const { userId } = req.params;
   if (!isValidUserId(userId)) {
     return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
-  }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
   }
 
   try {
@@ -385,13 +378,10 @@ app.get("/internal/users/:userId/payment-binding", requireInternalAuth, async (r
   }
 });
 
-app.get("/internal/users/:userId/dashboard", requireInternalAuth, async (req, res) => {
+app.get("/internal/users/:userId/dashboard", async (req, res) => {
   const { userId } = req.params;
   if (!isValidUserId(userId)) {
     return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
-  }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
   }
   if (!canAccessUser(req, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "Access to dashboard is forbidden");

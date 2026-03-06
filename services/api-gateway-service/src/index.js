@@ -1,5 +1,7 @@
 const crypto = require("crypto");
 const express = require("express");
+const fs = require("fs");
+const https = require("https");
 
 const app = express();
 app.use(express.json());
@@ -190,6 +192,47 @@ function hasUnexpectedQueryParams(req, allowedKeys) {
   return getQueryKeys(req).some((key) => !key || !allowed.has(key));
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function ensureNoQueryParams(req, res) {
+  if (!hasUnexpectedQueryParams(req, [])) {
+    return true;
+  }
+  errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  return false;
+}
+
+function ensureObjectPayload(res, payload, code, message) {
+  if (isPlainObject(payload)) {
+    return true;
+  }
+  errorResponse(res, 400, code, message);
+  return false;
+}
+
+function ensurePayloadKeys(res, payload, allowedKeys, code, message) {
+  const allowed = new Set(allowedKeys);
+  if (Object.keys(payload).every((key) => allowed.has(key))) {
+    return true;
+  }
+  errorResponse(res, 400, code, message);
+  return false;
+}
+
+function buildUserActor(user) {
+  return { userId: user.sub, role: user.role };
+}
+
+function buildIdempotencyKey(req, prefix) {
+  const headerKey = req.headers["x-idempotency-key"];
+  if (typeof headerKey === "string" && headerKey) {
+    return headerKey;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
 function parseServiceResponsePayload(rawPayload) {
   if (!rawPayload) {
     return null;
@@ -239,6 +282,15 @@ function relay(res, result) {
   return res.status(result.status).json(result.payload);
 }
 
+async function proxyServiceRequest(res, request, unavailableMessage) {
+  try {
+    const result = await callInternalService(request);
+    return relay(res, result);
+  } catch (err) {
+    return errorResponse(res, 502, "UPSTREAM_FAILURE", unavailableMessage, err.message);
+  }
+}
+
 app.get("/status", (_req, res) => {
   res.json({
     status: "ok",
@@ -249,8 +301,8 @@ app.get("/status", (_req, res) => {
 
 app.post("/api/v1/auth/login", async (req, res) => {
   const payload = req.body;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return errorResponse(res, 400, "INVALID_LOGIN_PAYLOAD", "Login payload must be an object");
+  if (!ensureObjectPayload(res, payload, "INVALID_LOGIN_PAYLOAD", "Login payload must be an object")) {
+    return;
   }
 
   const { email, password } = payload;
@@ -295,26 +347,24 @@ app.get("/api/v1/users/:userId/profile", requireUserJwt, async (req, res) => {
   if (!isValidUserId(userId)) {
     return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
   }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  if (!ensureNoQueryParams(req, res)) {
+    return;
   }
   if (!canAccessUserResource(req.user, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "You cannot access this user profile");
   }
 
-  try {
-    const result = await callInternalService({
+  return proxyServiceRequest(
+    res,
+    {
       url: `${serviceUrls.user}/internal/users/${userId}/profile`,
       method: "GET",
       audience: "user-service",
-      actor: { userId: req.user.sub, role: req.user.role },
+      actor: buildUserActor(req.user),
       scopes: ["profile:read"]
-    });
-
-    return relay(res, result);
-  } catch (err) {
-    return errorResponse(res, 502, "UPSTREAM_FAILURE", "User service is unavailable", err.message);
-  }
+    },
+    "User service is unavailable"
+  );
 });
 
 app.patch("/api/v1/users/:userId/profile", requireUserJwt, async (req, res) => {
@@ -322,32 +372,30 @@ app.patch("/api/v1/users/:userId/profile", requireUserJwt, async (req, res) => {
   if (!isValidUserId(userId)) {
     return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
   }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  if (!ensureNoQueryParams(req, res)) {
+    return;
   }
   if (!canAccessUserResource(req.user, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "You cannot update this user profile");
   }
 
   const payload = req.body;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "Profile patch payload must be an object");
+  if (!ensureObjectPayload(res, payload, "INVALID_PAYLOAD", "Profile patch payload must be an object")) {
+    return;
   }
 
-  try {
-    const result = await callInternalService({
+  return proxyServiceRequest(
+    res,
+    {
       url: `${serviceUrls.user}/internal/users/${userId}/profile`,
       method: "PATCH",
       body: payload,
       audience: "user-service",
-      actor: { userId: req.user.sub, role: req.user.role },
+      actor: buildUserActor(req.user),
       scopes: ["profile:write"]
-    });
-
-    return relay(res, result);
-  } catch (err) {
-    return errorResponse(res, 502, "UPSTREAM_FAILURE", "User service is unavailable", err.message);
-  }
+    },
+    "User service is unavailable"
+  );
 });
 
 app.get("/api/v1/users/:userId/dashboard", requireUserJwt, async (req, res) => {
@@ -355,26 +403,24 @@ app.get("/api/v1/users/:userId/dashboard", requireUserJwt, async (req, res) => {
   if (!isValidUserId(userId)) {
     return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
   }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  if (!ensureNoQueryParams(req, res)) {
+    return;
   }
   if (!canAccessUserResource(req.user, userId)) {
     return errorResponse(res, 403, "ACCESS_DENIED", "You cannot access this dashboard");
   }
 
-  try {
-    const result = await callInternalService({
+  return proxyServiceRequest(
+    res,
+    {
       url: `${serviceUrls.user}/internal/users/${userId}/dashboard`,
       method: "GET",
       audience: "user-service",
-      actor: { userId: req.user.sub, role: req.user.role },
+      actor: buildUserActor(req.user),
       scopes: ["dashboard:read"]
-    });
-
-    return relay(res, result);
-  } catch (err) {
-    return errorResponse(res, 502, "UPSTREAM_FAILURE", "User service is unavailable", err.message);
-  }
+    },
+    "User service is unavailable"
+  );
 });
 
 app.get("/api/v1/users/:userId/rides", requireUserJwt, async (req, res) => {
@@ -399,19 +445,17 @@ app.get("/api/v1/users/:userId/rides", requireUserJwt, async (req, res) => {
     search.set("limit", String(parsedLimit));
   }
 
-  try {
-    const result = await callInternalService({
+  return proxyServiceRequest(
+    res,
+    {
       url: `${serviceUrls.ride}/internal/users/${userId}/rides${search.size ? `?${search.toString()}` : ""}`,
       method: "GET",
       audience: "ride-service",
-      actor: { userId: req.user.sub, role: req.user.role },
+      actor: buildUserActor(req.user),
       scopes: ["rides:read"]
-    });
-
-    return relay(res, result);
-  } catch (err) {
-    return errorResponse(res, 502, "UPSTREAM_FAILURE", "Ride service is unavailable", err.message);
-  }
+    },
+    "Ride service is unavailable"
+  );
 });
 
 app.post("/api/v1/rides/start", requireUserJwt, async (req, res) => {
@@ -420,13 +464,11 @@ app.post("/api/v1/rides/start", requireUserJwt, async (req, res) => {
   }
 
   const payload = req.body;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "Ride start payload must be an object");
+  if (!ensureObjectPayload(res, payload, "INVALID_PAYLOAD", "Ride start payload must be an object")) {
+    return;
   }
-  const allowedKeys = ["bikeId"];
-  const hasUnsupportedKey = Object.keys(payload).some((key) => !allowedKeys.includes(key));
-  if (hasUnsupportedKey) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "Only bikeId is allowed in ride start payload");
+  if (!ensurePayloadKeys(res, payload, ["bikeId"], "INVALID_PAYLOAD", "Only bikeId is allowed in ride start payload")) {
+    return;
   }
 
   const { bikeId } = payload;
@@ -434,11 +476,11 @@ app.post("/api/v1/rides/start", requireUserJwt, async (req, res) => {
     return errorResponse(res, 400, "INVALID_PAYLOAD", "bikeId must match expected bike ID format");
   }
 
-  const idempotencyKey =
-    req.headers["x-idempotency-key"] || `start-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const idempotencyKey = buildIdempotencyKey(req, "start");
 
-  try {
-    const result = await callInternalService({
+  return proxyServiceRequest(
+    res,
+    {
       url: `${serviceUrls.ride}/internal/rides/start`,
       method: "POST",
       body: {
@@ -447,17 +489,14 @@ app.post("/api/v1/rides/start", requireUserJwt, async (req, res) => {
         startedAt: new Date().toISOString()
       },
       audience: "ride-service",
-      actor: { userId: req.user.sub, role: req.user.role },
+      actor: buildUserActor(req.user),
       scopes: ["ride:start"],
       extraHeaders: {
         "Idempotency-Key": idempotencyKey
       }
-    });
-
-    return relay(res, result);
-  } catch (err) {
-    return errorResponse(res, 502, "UPSTREAM_FAILURE", "Ride service is unavailable", err.message);
-  }
+    },
+    "Ride service is unavailable"
+  );
 });
 
 app.post("/api/v1/rides/:rideId/end", requireUserJwt, async (req, res) => {
@@ -468,19 +507,18 @@ app.post("/api/v1/rides/:rideId/end", requireUserJwt, async (req, res) => {
     return errorResponse(res, 400, "INVALID_PATH", "rideId must match expected ID format");
   }
 
-  const idempotencyKey =
-    req.headers["x-idempotency-key"] || `end-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const idempotencyKey = buildIdempotencyKey(req, "end");
 
   const payload = req.body;
-  if (payload !== undefined && (payload === null || typeof payload !== "object" || Array.isArray(payload))) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "Ride end payload must be an object when provided");
+  if (!ensureObjectPayload(res, payload, "INVALID_PAYLOAD", "Ride end payload must be a JSON object")) {
+    return;
   }
 
-  const effectivePayload = payload || {};
-  const allowedKeys = ["dockId"];
-  const hasUnsupportedKey = Object.keys(effectivePayload).some((key) => !allowedKeys.includes(key));
-  if (hasUnsupportedKey) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "Only dockId is allowed in ride end payload");
+  const effectivePayload = payload;
+  if (
+    !ensurePayloadKeys(res, effectivePayload, ["dockId"], "INVALID_PAYLOAD", "Only dockId is allowed in ride end payload")
+  ) {
+    return;
   }
   if (
     Object.prototype.hasOwnProperty.call(effectivePayload, "dockId") &&
@@ -490,8 +528,9 @@ app.post("/api/v1/rides/:rideId/end", requireUserJwt, async (req, res) => {
     return errorResponse(res, 400, "INVALID_PAYLOAD", "dockId must match expected dock ID format or be null");
   }
 
-  try {
-    const result = await callInternalService({
+  return proxyServiceRequest(
+    res,
+    {
       url: `${serviceUrls.ride}/internal/rides/${req.params.rideId}/end`,
       method: "POST",
       body: {
@@ -499,17 +538,14 @@ app.post("/api/v1/rides/:rideId/end", requireUserJwt, async (req, res) => {
         dockId: effectivePayload.dockId
       },
       audience: "ride-service",
-      actor: { userId: req.user.sub, role: req.user.role },
+      actor: buildUserActor(req.user),
       scopes: ["ride:end"],
       extraHeaders: {
         "Idempotency-Key": idempotencyKey
       }
-    });
-
-    return relay(res, result);
-  } catch (err) {
-    return errorResponse(res, 502, "UPSTREAM_FAILURE", "Ride service is unavailable", err.message);
-  }
+    },
+    "Ride service is unavailable"
+  );
 });
 
 app.post("/api/v1/admin/bikes/:bikeId/override-lock", requireUserJwt, async (req, res) => {
@@ -521,34 +557,26 @@ app.post("/api/v1/admin/bikes/:bikeId/override-lock", requireUserJwt, async (req
   }
 
   const payload = req.body;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "Override payload must be an object");
+  if (!ensureObjectPayload(res, payload, "INVALID_PAYLOAD", "Override payload must be an object")) {
+    return;
   }
 
   if (!["locked", "unlocked"].includes(payload.lockState)) {
     return errorResponse(res, 400, "INVALID_PAYLOAD", "lockState must be locked or unlocked");
   }
 
-  try {
-    const result = await callInternalService({
+  return proxyServiceRequest(
+    res,
+    {
       url: `${serviceUrls.inventory}/internal/admin/bikes/${req.params.bikeId}/override-lock`,
       method: "POST",
       body: { lockState: payload.lockState },
       audience: "bike-inventory-service",
-      actor: { userId: req.user.sub, role: req.user.role },
+      actor: buildUserActor(req.user),
       scopes: ["fleet:admin"]
-    });
-
-    return relay(res, result);
-  } catch (err) {
-    return errorResponse(
-      res,
-      502,
-      "UPSTREAM_FAILURE",
-      "Bike inventory service is unavailable",
-      err.message
-    );
-  }
+    },
+    "Bike inventory service is unavailable"
+  );
 });
 
 app.post("/api/v1/device/events", async (req, res) => {
@@ -558,18 +586,19 @@ app.post("/api/v1/device/events", async (req, res) => {
   }
 
   const payload = req.body;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "Device event payload must be an object");
+  if (!ensureObjectPayload(res, payload, "INVALID_PAYLOAD", "Device event payload must be an object")) {
+    return;
   }
-  const allowedKeys = ["bikeId", "eventType", "nonce", "timestamp", "dockId"];
-  const hasUnsupportedKey = Object.keys(payload).some((key) => !allowedKeys.includes(key));
-  if (hasUnsupportedKey) {
-    return errorResponse(
+  if (
+    !ensurePayloadKeys(
       res,
-      400,
+      payload,
+      ["bikeId", "eventType", "nonce", "timestamp", "dockId"],
       "INVALID_PAYLOAD",
       "Only bikeId, eventType, nonce, timestamp and dockId are allowed"
-    );
+    )
+  ) {
+    return;
   }
 
   const { bikeId, eventType, nonce, timestamp, dockId } = payload;
@@ -588,8 +617,9 @@ app.post("/api/v1/device/events", async (req, res) => {
     return errorResponse(res, 400, "INVALID_PAYLOAD", "dockId must match expected dock ID format or be null");
   }
 
-  try {
-    const result = await callInternalService({
+  return proxyServiceRequest(
+    res,
+    {
       url: `${serviceUrls.inventory}/internal/device-events`,
       method: "POST",
       body: payload,
@@ -599,18 +629,9 @@ app.post("/api/v1/device/events", async (req, res) => {
       extraHeaders: {
         "x-device-cert": deviceCert
       }
-    });
-
-    return relay(res, result);
-  } catch (err) {
-    return errorResponse(
-      res,
-      502,
-      "UPSTREAM_FAILURE",
-      "Bike inventory service is unavailable",
-      err.message
-    );
-  }
+    },
+    "Bike inventory service is unavailable"
+  );
 });
 
 app.get("/api/v1/partner/reports/daily-usage", requirePartnerApiKey, async (req, res) => {
@@ -626,8 +647,9 @@ app.get("/api/v1/partner/reports/daily-usage", requirePartnerApiKey, async (req,
     search.set("date", req.query.date);
   }
 
-  try {
-    const result = await callInternalService({
+  return proxyServiceRequest(
+    res,
+    {
       url: `${serviceUrls.partnerAnalytics}/internal/reports/daily-usage${
         search.size ? `?${search.toString()}` : ""
       }`,
@@ -635,18 +657,9 @@ app.get("/api/v1/partner/reports/daily-usage", requirePartnerApiKey, async (req,
       audience: "partner-analytics-service",
       actor: { partnerKeyHash: crypto.createHash("sha256").update(req.partnerKey).digest("hex") },
       scopes: ["analytics:read"]
-    });
-
-    return relay(res, result);
-  } catch (err) {
-    return errorResponse(
-      res,
-      502,
-      "UPSTREAM_FAILURE",
-      "Partner analytics service is unavailable",
-      err.message
-    );
-  }
+    },
+    "Partner analytics service is unavailable"
+  );
 });
 
 app.use((err, _req, res, next) => {
@@ -661,6 +674,17 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} listening on ${PORT}`);
+const keyPath = process.env.TLS_KEY_PATH || "/app/certs/key.pem";
+const certPath = process.env.TLS_CERT_PATH || "/app/certs/cert.pem";
+
+const server = https.createServer(
+  {
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certPath)
+  },
+  app
+);
+
+server.listen(PORT, () => {
+  console.log(`${SERVICE_NAME} HTTPS listening on ${PORT}`);
 });

@@ -208,10 +208,6 @@ function sanitizeRide(ride) {
   };
 }
 
-function isNonEmptyString(value) {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
 function isValidIdempotencyKey(value) {
   return typeof value === "string" && /^[A-Za-z0-9._:-]{8,}$/.test(value);
 }
@@ -258,6 +254,35 @@ function hasUnexpectedQueryParams(req, allowedKeys) {
   return getQueryKeys(req).some((key) => !key || !allowed.has(key));
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function ensureNoQueryParams(req, res) {
+  if (!hasUnexpectedQueryParams(req, [])) {
+    return true;
+  }
+  errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  return false;
+}
+
+function ensureObjectPayload(res, payload, code, message) {
+  if (isPlainObject(payload)) {
+    return true;
+  }
+  errorResponse(res, 400, code, message);
+  return false;
+}
+
+function ensurePayloadKeys(res, payload, allowedKeys, code, message) {
+  const allowed = new Set(allowedKeys);
+  if (Object.keys(payload).every((key) => allowed.has(key))) {
+    return true;
+  }
+  errorResponse(res, 400, code, message);
+  return false;
+}
+
 function calculateRideAmount(startedAtIso, endedAtIso) {
   const startedAt = new Date(startedAtIso).getTime();
   const endedAt = new Date(endedAtIso).getTime();
@@ -275,22 +300,23 @@ app.get("/status", (_req, res) => {
 });
 
 app.post("/internal/rides/start", requireInternalAuth, async (req, res) => {
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  if (!ensureNoQueryParams(req, res)) {
+    return;
   }
   const payload = req.body;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "Ride start payload must be an object");
+  if (!ensureObjectPayload(res, payload, "INVALID_PAYLOAD", "Ride start payload must be an object")) {
+    return;
   }
-  const allowedKeys = ["userId", "bikeId", "startedAt"];
-  const hasUnsupportedKey = Object.keys(payload).some((key) => !allowedKeys.includes(key));
-  if (hasUnsupportedKey) {
-    return errorResponse(
+  if (
+    !ensurePayloadKeys(
       res,
-      400,
+      payload,
+      ["userId", "bikeId", "startedAt"],
       "INVALID_PAYLOAD",
       "Only userId, bikeId and startedAt are allowed in ride start payload"
-    );
+    )
+  ) {
+    return;
   }
 
   const { userId, bikeId, startedAt } = payload;
@@ -440,24 +466,25 @@ app.post("/internal/rides/:rideId/end", requireInternalAuth, async (req, res) =>
   if (!isValidRideId(rideId)) {
     return errorResponse(res, 400, "INVALID_PATH", "rideId must match expected ID format");
   }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  if (!ensureNoQueryParams(req, res)) {
+    return;
   }
   const payload = req.body;
-  if (payload !== undefined && (payload === null || typeof payload !== "object" || Array.isArray(payload))) {
-    return errorResponse(res, 400, "INVALID_PAYLOAD", "Ride end payload must be an object when provided");
+  if (!ensureObjectPayload(res, payload, "INVALID_PAYLOAD", "Ride end payload must be a JSON object")) {
+    return;
   }
 
-  const effectivePayload = payload || {};
-  const allowedKeys = ["endedAt", "dockId"];
-  const hasUnsupportedKey = Object.keys(effectivePayload).some((key) => !allowedKeys.includes(key));
-  if (hasUnsupportedKey) {
-    return errorResponse(
+  const effectivePayload = payload;
+  if (
+    !ensurePayloadKeys(
       res,
-      400,
+      effectivePayload,
+      ["endedAt", "dockId"],
       "INVALID_PAYLOAD",
       "Only endedAt and dockId are allowed in ride end payload"
-    );
+    )
+  ) {
+    return;
   }
 
   const { endedAt, dockId } = effectivePayload;
@@ -598,8 +625,8 @@ app.get("/internal/rides/:rideId", requireInternalAuth, async (req, res) => {
   if (!isValidRideId(rideId)) {
     return errorResponse(res, 400, "INVALID_PATH", "rideId must match expected ID format");
   }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  if (!ensureNoQueryParams(req, res)) {
+    return;
   }
 
   try {

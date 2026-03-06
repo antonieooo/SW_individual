@@ -2,24 +2,22 @@ openapi: 3.0.3
 info:
   title: Payment Service API
   version: 1.0.0
-  description: Internal billing APIs for ride charging and reporting.
 servers:
   - url: http://localhost:3004
+
 paths:
   /status:
     get:
-      summary: Service health status
       responses:
         '200':
-          description: Payment service is healthy
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ServiceStatus'
+                $ref: './components/common.yaml#/components/schemas/ServiceStatus'
 
   /internal/payments/charge:
     post:
-      summary: Create or return an idempotent charge
       security:
         - internalMtls: []
           serviceJwt: []
@@ -30,278 +28,108 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ChargeRequest'
+              $ref: './components/common.yaml#/components/schemas/ChargeRequest'
       responses:
-        '201':
-          description: Charge created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaymentResponse'
         '200':
-          description: Existing idempotent charge returned
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaymentResponse'
+                $ref: './components/common.yaml#/components/schemas/PaymentResponse'
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: './components/common.yaml#/components/schemas/PaymentResponse'
         '400':
-          description: Invalid payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Caller is not allowed to create a charge
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '409':
-          description: Charge conflict for same idempotency key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '502':
-          description: Upstream or persistence failure while charging
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/UpstreamError'
 
   /internal/payments/{paymentId}:
     parameters:
       - $ref: '#/components/parameters/PaymentIdPath'
     get:
-      summary: Fetch one payment by ID
       security:
         - internalMtls: []
           serviceJwt: []
       responses:
         '200':
-          description: Payment found
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaymentResponse'
+                $ref: './components/common.yaml#/components/schemas/PaymentResponse'
         '400':
-          description: Invalid path or query
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Payment does not exist
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Caller is not allowed to view this payment
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: Payment state conflict while querying
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '502':
-          description: Internal query failure
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/UpstreamError'
 
   /internal/users/{userId}/billing-summary:
     parameters:
       - $ref: '#/components/parameters/UserIdPath'
     get:
-      summary: Aggregate billing summary for one user
       security:
         - internalMtls: []
           serviceJwt: []
       responses:
         '200':
-          description: Summary returned
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BillingSummary'
+                $ref: './components/common.yaml#/components/schemas/PaymentSummary'
         '400':
-          description: Invalid path or query
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Caller is not allowed to read this billing summary
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '409':
-          description: Billing summary conflict while aggregating
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Conflict'
         '502':
-          description: Internal aggregation failure
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/UpstreamError'
 
 components:
   parameters:
-    IdempotencyKeyHeader:
-      in: header
-      name: Idempotency-Key
-      required: true
-      schema:
-        type: string
-        minLength: 8
-        pattern: '^[A-Za-z0-9._:-]{8,}$'
-    PaymentIdPath:
-      in: path
-      name: paymentId
-      required: true
-      schema:
-        type: string
     UserIdPath:
-      in: path
-      name: userId
-      required: true
-      schema:
-        type: string
-        pattern: '^[um]-[A-Za-z0-9._:-]+$'
-        example: u-100
+      $ref: './components/common.yaml#/components/parameters/UserIdPath'
+    PaymentIdPath:
+      $ref: './components/common.yaml#/components/parameters/PaymentIdPath'
+    IdempotencyKeyHeader:
+      $ref: './components/common.yaml#/components/parameters/IdempotencyKeyHeaderInternal'
 
   securitySchemes:
     serviceJwt:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+      $ref: './components/common.yaml#/components/securitySchemes/serviceJwt'
     internalMtls:
-      type: apiKey
-      in: header
-      name: x-internal-mtls
-      description: Local development simulation for mTLS.
+      $ref: './components/common.yaml#/components/securitySchemes/internalMtls'
 
-  schemas:
-    ServiceStatus:
-      type: object
-      required: [status, service, timestamp]
-      properties:
-        status:
-          type: string
-          example: ok
-        service:
-          type: string
-          example: payment-service
-        timestamp:
-          type: string
-          format: date-time
-
-    ErrorResponse:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message]
-          properties:
-            code:
-              type: string
-            message:
-              type: string
-            details:
-              nullable: true
-              oneOf:
-                - type: object
-                - type: array
-                  items: {}
-                - type: string
-
-    ChargeRequest:
-      type: object
-      additionalProperties: false
-      required: [userId, rideId, amount, currency, paymentBindingId]
-      properties:
-        userId:
-          type: string
-          pattern: '^[um]-[A-Za-z0-9._:-]+$'
-        rideId:
-          type: string
-          pattern: '^ride-[A-Za-z0-9._:-]+$'
-        amount:
-          type: number
-          minimum: 0
-        currency:
-          type: string
-          pattern: '^[A-Z]{3}$'
-          example: GBP
-        paymentBindingId:
-          type: string
-          pattern: '^paybind-[A-Za-z0-9._:-]+$'
-
-    PaymentResponse:
-      type: object
-      required: [paymentId, userId, rideId, amount, currency, status, createdAt]
-      properties:
-        paymentId:
-          type: string
-        userId:
-          type: string
-          pattern: '^[um]-[A-Za-z0-9._:-]+$'
-        rideId:
-          type: string
-          pattern: '^ride-[A-Za-z0-9._:-]+$'
-        amount:
-          type: number
-        currency:
-          type: string
-          pattern: '^[A-Z]{3}$'
-        status:
-          type: string
-          enum: [charged, refunded]
-        createdAt:
-          type: string
-          format: date-time
-
-    BillingSummary:
-      type: object
-      required: [userId, currency, totalCharged, paymentCount]
-      properties:
-        userId:
-          type: string
-          pattern: '^[um]-[A-Za-z0-9._:-]+$'
-        currency:
-          type: string
-          example: GBP
-        totalCharged:
-          type: number
-        paymentCount:
-          type: integer
-          minimum: 0
+  responses:
+    BadRequest:
+      $ref: './components/common.yaml#/components/responses/BadRequest'
+    Unauthorized:
+      $ref: './components/common.yaml#/components/responses/Unauthorized'
+    Forbidden:
+      $ref: './components/common.yaml#/components/responses/Forbidden'
+    NotFound:
+      $ref: './components/common.yaml#/components/responses/NotFound'
+    Conflict:
+      $ref: './components/common.yaml#/components/responses/Conflict'
+    UpstreamError:
+      $ref: './components/common.yaml#/components/responses/UpstreamError'

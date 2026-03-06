@@ -1,0 +1,655 @@
+openapi: 3.0.3
+info:
+  title: CityBike Shared OpenAPI Components
+  version: 1.0.0
+
+components:
+  securitySchemes:
+    userJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    internalMtls:
+      type: apiKey
+      in: header
+      name: x-internal-mtls
+    partnerApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+    deviceCert:
+      type: apiKey
+      in: header
+      name: x-device-cert
+    dbCredential:
+      type: apiKey
+      in: header
+      name: x-db-credential
+
+  parameters:
+    UserIdPath:
+      in: path
+      name: userId
+      required: true
+      schema:
+        type: string
+        pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        example: u-100
+    RideIdPath:
+      in: path
+      name: rideId
+      required: true
+      schema:
+        type: string
+        pattern: '^ride-[A-Za-z0-9._:-]+$'
+        example: ride-100
+    BikeIdPath:
+      in: path
+      name: bikeId
+      required: true
+      schema:
+        type: string
+        pattern: '^bike-[A-Za-z0-9._:-]+$'
+        example: bike-001
+    PaymentIdPath:
+      in: path
+      name: paymentId
+      required: true
+      schema:
+        type: string
+        pattern: '^pay-[A-Za-z0-9._:-]+$'
+    IdempotencyKeyHeaderInternal:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        pattern: '^[A-Za-z0-9._:-]{8,}$'
+    IdempotencyKeyHeaderGateway:
+      in: header
+      name: x-idempotency-key
+      required: false
+      schema:
+        type: string
+        minLength: 8
+        pattern: '^[A-Za-z0-9._:-]{8,}$'
+    SchemaPath:
+      in: path
+      name: schema
+      required: true
+      schema:
+        type: string
+        enum: [user, ride, inventory, payment, analytics]
+    CollectionPath:
+      in: path
+      name: collection
+      required: true
+      schema:
+        type: string
+        minLength: 1
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Access denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Request conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UpstreamError:
+      description: Upstream dependency failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ServiceStatus:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: citybike-service
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+              oneOf:
+                - type: object
+                - type: array
+                  items: {}
+                - type: string
+
+    LoginRequestGateway:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 3
+          maxLength: 254
+          pattern: '^\S+@\S+\.\S+$'
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^.*\S.*$'
+
+    LoginRequestInternal:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 3
+          maxLength: 254
+          pattern: '^\S+@\S+\.\S+$'
+        password:
+          type: string
+          minLength: 6
+          maxLength: 128
+          pattern: '^.*\S.*$'
+
+    LoginResponseGateway:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          minimum: 1
+        user:
+          $ref: '#/components/schemas/UserProfile'
+
+    LoginResponseInternal:
+      type: object
+      required: [user]
+      properties:
+        user:
+          type: object
+          required: [id, role, email, name]
+          properties:
+            id:
+              type: string
+              pattern: '^[um]-[A-Za-z0-9._:-]+$'
+            role:
+              type: string
+              enum: [user, maintainer]
+            email:
+              type: string
+              format: email
+            name:
+              type: string
+              minLength: 2
+              pattern: "^[A-Za-z][A-Za-z0-9 .'-]{0,62}[A-Za-z0-9.'-]$"
+
+    UserProfile:
+      type: object
+      required: [id, role, email, name, phone]
+      properties:
+        id:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        role:
+          type: string
+          enum: [user, maintainer]
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          minLength: 2
+          pattern: "^[A-Za-z][A-Za-z0-9 .'-]{0,62}[A-Za-z0-9.'-]$"
+        phone:
+          type: string
+          pattern: '^[+]?[0-9\- ]{7,20}$'
+
+    UserProfilePatch:
+      type: object
+      additionalProperties: false
+      anyOf:
+        - required: [name]
+        - required: [phone]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          pattern: "^[A-Za-z][A-Za-z0-9 .'-]{0,62}[A-Za-z0-9.'-]$"
+        phone:
+          type: string
+          pattern: '^[+]?[0-9\- ]{7,20}$'
+
+    PaymentBindingResponse:
+      type: object
+      required: [userId, paymentBindingId, status]
+      properties:
+        userId:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        paymentBindingId:
+          type: string
+          pattern: '^paybind-[A-Za-z0-9._:-]+$'
+        status:
+          type: string
+          enum: [valid, suspended]
+
+    RideSummaryItem:
+      type: object
+      required: [rideId, bikeId, status, startedAt]
+      properties:
+        rideId:
+          type: string
+          pattern: '^ride-[A-Za-z0-9._:-]+$'
+        bikeId:
+          type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
+        status:
+          type: string
+          enum: [active, completed]
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserBillingSummary:
+      type: object
+      required: [currency, totalCharged, paymentCount]
+      properties:
+        currency:
+          type: string
+          example: GBP
+        totalCharged:
+          type: number
+          format: float
+        paymentCount:
+          type: integer
+          minimum: 0
+
+    PaymentSummary:
+      type: object
+      required: [userId, currency, totalCharged, paymentCount]
+      properties:
+        userId:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        currency:
+          type: string
+          example: GBP
+        totalCharged:
+          type: number
+          format: float
+        paymentCount:
+          type: integer
+          minimum: 0
+
+    UserDashboardInternal:
+      type: object
+      required: [profile, recentRides, billingSummary]
+      properties:
+        profile:
+          $ref: '#/components/schemas/UserProfile'
+        recentRides:
+          type: array
+          items:
+            $ref: '#/components/schemas/RideSummaryItem'
+        billingSummary:
+          $ref: '#/components/schemas/UserBillingSummary'
+
+    UserDashboardGateway:
+      type: object
+      required: [profile, recentRides, billingSummary]
+      properties:
+        profile:
+          $ref: '#/components/schemas/UserProfile'
+        recentRides:
+          type: array
+          items:
+            $ref: '#/components/schemas/RideResponse'
+        billingSummary:
+          $ref: '#/components/schemas/PaymentSummary'
+
+    StartRideRequestGateway:
+      type: object
+      additionalProperties: false
+      required: [bikeId]
+      properties:
+        bikeId:
+          type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
+
+    StartRideRequestInternal:
+      type: object
+      additionalProperties: false
+      required: [userId, bikeId]
+      properties:
+        userId:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        bikeId:
+          type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
+        startedAt:
+          type: string
+          format: date-time
+
+    EndRideRequestGateway:
+      type: object
+      additionalProperties: false
+      properties:
+        dockId:
+          type: string
+          nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
+
+    EndRideRequestInternal:
+      type: object
+      additionalProperties: false
+      properties:
+        endedAt:
+          type: string
+          format: date-time
+        dockId:
+          type: string
+          nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
+
+    RideResponse:
+      type: object
+      required: [rideId, userId, bikeId, status, startedAt, amount]
+      properties:
+        rideId:
+          type: string
+          pattern: '^ride-[A-Za-z0-9._:-]+$'
+        userId:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        bikeId:
+          type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
+        status:
+          type: string
+          enum: [active, completed]
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        amount:
+          type: number
+          format: float
+        currency:
+          type: string
+          example: GBP
+
+    RideListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RideResponse'
+
+    OverrideLockRequest:
+      type: object
+      required: [lockState]
+      properties:
+        lockState:
+          type: string
+          enum: [locked, unlocked]
+
+    BikeState:
+      type: object
+      required: [bikeId, availability, lockState, lastUpdated]
+      properties:
+        bikeId:
+          type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
+        availability:
+          type: string
+          enum: [available, reserved, unavailable]
+        lockState:
+          type: string
+          enum: [locked, unlocked]
+        dockId:
+          type: string
+          nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
+        lastUpdated:
+          type: string
+          format: date-time
+
+    ReleaseBikeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        dockId:
+          type: string
+          nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
+
+    DeviceEventRequest:
+      type: object
+      additionalProperties: false
+      required: [bikeId, eventType, nonce, timestamp]
+      properties:
+        bikeId:
+          type: string
+          pattern: '^bike-[A-Za-z0-9._:-]+$'
+        eventType:
+          type: string
+          enum: [telemetry, lock, unlock]
+        nonce:
+          type: string
+          minLength: 6
+          pattern: '^[A-Za-z0-9._:-]{6,128}$'
+        timestamp:
+          type: string
+          format: date-time
+        dockId:
+          type: string
+          nullable: true
+          pattern: '^dock-[A-Za-z0-9._:-]+$'
+
+    DeviceEventAccepted:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+          example: true
+
+    DailyUsageReport:
+      type: object
+      required:
+        - date
+        - totalRides
+        - uniqueUsers
+        - activeBikes
+        - generatedAt
+        - minimumAggregationThreshold
+        - suppressed
+      properties:
+        date:
+          type: string
+          format: date
+        totalRides:
+          type: integer
+          minimum: 0
+        uniqueUsers:
+          type: integer
+          minimum: 0
+        activeBikes:
+          type: integer
+          minimum: 0
+        generatedAt:
+          type: string
+          format: date-time
+        minimumAggregationThreshold:
+          type: integer
+          minimum: 1
+        suppressed:
+          type: boolean
+
+    ChargeRequest:
+      type: object
+      additionalProperties: false
+      required: [userId, rideId, amount, currency, paymentBindingId]
+      properties:
+        userId:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        rideId:
+          type: string
+          pattern: '^ride-[A-Za-z0-9._:-]+$'
+        amount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: GBP
+        paymentBindingId:
+          type: string
+          pattern: '^paybind-[A-Za-z0-9._:-]+$'
+
+    PaymentResponse:
+      type: object
+      required: [paymentId, userId, rideId, amount, currency, status, createdAt]
+      properties:
+        paymentId:
+          type: string
+          pattern: '^pay-[A-Za-z0-9._:-]+$'
+        userId:
+          type: string
+          pattern: '^[um]-[A-Za-z0-9._:-]+$'
+        rideId:
+          type: string
+          pattern: '^ride-[A-Za-z0-9._:-]+$'
+        amount:
+          type: number
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        status:
+          type: string
+          enum: [charged, refunded]
+        createdAt:
+          type: string
+          format: date-time
+
+    DbGetRequest:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+
+    DbListRequest:
+      type: object
+      properties:
+        field:
+          type: string
+          minLength: 1
+        value: {}
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 100
+
+    DbUpsertRequest:
+      type: object
+      required: [id, document]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        document:
+          type: object
+          additionalProperties: true
+
+    DbItemResponse:
+      type: object
+      required: [item]
+      properties:
+        item:
+          type: object
+          additionalProperties: true
+
+    DbListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    AnalyticsRefreshRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date

@@ -266,6 +266,18 @@ function refreshDailyAnalytics(date) {
   return report;
 }
 
+function ensureAnalyticsAccess(req, res, forbiddenCode, forbiddenMessage) {
+  if (!["partner-analytics-service", SERVICE_NAME].includes(req.auth.iss)) {
+    errorResponse(res, 403, forbiddenCode, forbiddenMessage);
+    return false;
+  }
+  if (req.headers["x-db-credential"] !== schemaCredentials.analytics) {
+    errorResponse(res, 403, "DB_CREDENTIAL_INVALID", "Invalid DB credential for schema analytics");
+    return false;
+  }
+  return true;
+}
+
 app.get("/status", (_req, res) => {
   res.json({
     status: "ok",
@@ -349,13 +361,8 @@ app.post("/internal/db/:schema/:collection/upsert", requireInternalAuth, ensureS
 });
 
 app.post("/internal/db/analytics/refresh", requireInternalAuth, (req, res) => {
-  const caller = req.auth.iss;
-  if (!["partner-analytics-service", SERVICE_NAME].includes(caller)) {
-    return errorResponse(res, 403, "ANALYTICS_REFRESH_FORBIDDEN", "Only analytics service can refresh reports");
-  }
-
-  if (req.headers["x-db-credential"] !== schemaCredentials.analytics) {
-    return errorResponse(res, 403, "DB_CREDENTIAL_INVALID", "Invalid DB credential for schema analytics");
+  if (!ensureAnalyticsAccess(req, res, "ANALYTICS_REFRESH_FORBIDDEN", "Only analytics service can refresh reports")) {
+    return;
   }
 
   if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
@@ -372,13 +379,8 @@ app.post("/internal/db/analytics/refresh", requireInternalAuth, (req, res) => {
 });
 
 app.get("/internal/db/analytics/daily-usage", requireInternalAuth, (req, res) => {
-  const caller = req.auth.iss;
-  if (!["partner-analytics-service", SERVICE_NAME].includes(caller)) {
-    return errorResponse(res, 403, "ANALYTICS_READ_FORBIDDEN", "Only analytics service can read reports");
-  }
-
-  if (req.headers["x-db-credential"] !== schemaCredentials.analytics) {
-    return errorResponse(res, 403, "DB_CREDENTIAL_INVALID", "Invalid DB credential for schema analytics");
+  if (!ensureAnalyticsAccess(req, res, "ANALYTICS_READ_FORBIDDEN", "Only analytics service can read reports")) {
+    return;
   }
 
   const rawDate = req.query.date;
@@ -406,15 +408,6 @@ app.use((err, _req, res, _next) => {
   return errorResponse(res, 500, "INTERNAL_ERROR", "Unhandled server error", err.message);
 });
 
-function buildInternalToken() {
-  return signToken({
-    type: "service",
-    iss: SERVICE_NAME,
-    aud: SERVICE_NAME,
-    exp: Math.floor(Date.now() / 1000) + 300
-  });
-}
-
 async function selfRefresh() {
   try {
     const date = new Date().toISOString().slice(0, 10);
@@ -422,7 +415,7 @@ async function selfRefresh() {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${buildInternalToken()}`,
+        authorization: `Bearer ${signToken({ type: "service", iss: SERVICE_NAME, aud: SERVICE_NAME, exp: Math.floor(Date.now() / 1000) + 300 })}`,
         "x-internal-mtls": "true",
         "x-db-credential": schemaCredentials.analytics
       },

@@ -2,24 +2,22 @@ openapi: 3.0.3
 info:
   title: User Service API
   version: 1.0.0
-  description: Internal identity and profile endpoints consumed through the API gateway.
 servers:
   - url: http://localhost:3001
+
 paths:
   /status:
     get:
-      summary: Service health status
       responses:
         '200':
-          description: User service is healthy
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ServiceStatus'
+                $ref: './components/common.yaml#/components/schemas/ServiceStatus'
 
   /internal/auth/login:
     post:
-      summary: Validate user credentials for gateway login flow
       security:
         - internalMtls: []
           serviceJwt: []
@@ -28,68 +26,42 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoginRequest'
+              $ref: './components/common.yaml#/components/schemas/LoginRequestInternal'
       responses:
         '200':
-          description: Credentials valid
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoginResponse'
+                $ref: './components/common.yaml#/components/schemas/LoginResponseInternal'
         '400':
-          description: Invalid request payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing/invalid service authentication or credentials invalid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
 
   /internal/users/{userId}/profile:
     parameters:
       - $ref: '#/components/parameters/UserIdPath'
     get:
-      summary: Fetch profile data for one user
       security:
         - internalMtls: []
           serviceJwt: []
       responses:
         '200':
-          description: Profile found
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserProfile'
+                $ref: './components/common.yaml#/components/schemas/UserProfile'
         '400':
-          description: Invalid path or query
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Access denied
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: User does not exist
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
     patch:
-      summary: Update mutable profile fields
       security:
         - internalMtls: []
           serviceJwt: []
@@ -98,298 +70,84 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserProfilePatch'
+              $ref: './components/common.yaml#/components/schemas/UserProfilePatch'
       responses:
         '200':
-          description: Profile updated
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserProfile'
+                $ref: './components/common.yaml#/components/schemas/UserProfile'
         '400':
-          description: Invalid payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Access denied
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: User does not exist
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
 
   /internal/users/{userId}/payment-binding:
     parameters:
       - $ref: '#/components/parameters/UserIdPath'
     get:
-      summary: Get masked payment binding information
       security:
         - internalMtls: []
           serviceJwt: []
       responses:
         '200':
-          description: Binding data returned
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaymentBindingResponse'
+                $ref: './components/common.yaml#/components/schemas/PaymentBindingResponse'
         '400':
-          description: Invalid path or query
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: User does not exist
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
 
   /internal/users/{userId}/dashboard:
     parameters:
       - $ref: '#/components/parameters/UserIdPath'
     get:
-      summary: Aggregate profile, ride summary, and billing summary
       security:
         - internalMtls: []
           serviceJwt: []
       responses:
         '200':
-          description: Dashboard assembled
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserDashboardResponse'
+                $ref: './components/common.yaml#/components/schemas/UserDashboardInternal'
         '400':
-          description: Invalid path or query
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Access denied
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: User does not exist
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
 
 components:
   parameters:
     UserIdPath:
-      in: path
-      name: userId
-      required: true
-      schema:
-        type: string
-        pattern: '^[um]-[A-Za-z0-9._:-]+$'
-        example: u-100
+      $ref: './components/common.yaml#/components/parameters/UserIdPath'
 
   securitySchemes:
     serviceJwt:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: Signed internal token issued by API Gateway or trusted internal service.
+      $ref: './components/common.yaml#/components/securitySchemes/serviceJwt'
     internalMtls:
-      type: apiKey
-      in: header
-      name: x-internal-mtls
-      description: Local development simulation for mTLS.
+      $ref: './components/common.yaml#/components/securitySchemes/internalMtls'
 
-  schemas:
-    ServiceStatus:
-      type: object
-      required: [status, service, timestamp]
-      properties:
-        status:
-          type: string
-          example: ok
-        service:
-          type: string
-          example: user-service
-        timestamp:
-          type: string
-          format: date-time
-
-    ErrorResponse:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message]
-          properties:
-            code:
-              type: string
-            message:
-              type: string
-            details:
-              nullable: true
-              oneOf:
-                - type: object
-                - type: array
-                  items: {}
-                - type: string
-
-    LoginRequest:
-      type: object
-      required: [email, password]
-      properties:
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 6
-
-    LoginResponse:
-      type: object
-      required: [user]
-      properties:
-        user:
-          type: object
-          required: [id, role, email, name]
-          properties:
-            id:
-              type: string
-              pattern: '^[um]-[A-Za-z0-9._:-]+$'
-            role:
-              type: string
-              enum: [user, maintainer]
-            email:
-              type: string
-              format: email
-            name:
-              type: string
-              minLength: 2
-              pattern: "^[A-Za-z][A-Za-z0-9 .'-]{1,63}$"
-
-    UserProfile:
-      type: object
-      required: [id, role, email, name, phone]
-      properties:
-        id:
-          type: string
-          pattern: '^[um]-[A-Za-z0-9._:-]+$'
-        role:
-          type: string
-          enum: [user, maintainer]
-        email:
-          type: string
-          format: email
-        name:
-          type: string
-          minLength: 2
-          pattern: "^[A-Za-z][A-Za-z0-9 .'-]{1,63}$"
-        phone:
-          type: string
-          pattern: '^[+]?[0-9\- ]{7,20}$'
-
-    UserProfilePatch:
-      type: object
-      additionalProperties: false
-      anyOf:
-        - required: [name]
-        - required: [phone]
-      properties:
-        name:
-          type: string
-          minLength: 2
-          pattern: "^[A-Za-z][A-Za-z0-9 .'-]{1,63}$"
-        phone:
-          type: string
-          pattern: '^[+]?[0-9\- ]{7,20}$'
-
-    PaymentBindingResponse:
-      type: object
-      required: [userId, paymentBindingId, status]
-      properties:
-        userId:
-          type: string
-          pattern: '^[um]-[A-Za-z0-9._:-]+$'
-        paymentBindingId:
-          type: string
-          pattern: '^paybind-[A-Za-z0-9._:-]+$'
-        status:
-          type: string
-          enum: [valid, suspended]
-
-    RideSummaryItem:
-      type: object
-      required: [rideId, bikeId, status, startedAt]
-      properties:
-        rideId:
-          type: string
-          pattern: '^ride-[A-Za-z0-9._:-]+$'
-        bikeId:
-          type: string
-          pattern: '^bike-[A-Za-z0-9._:-]+$'
-        status:
-          type: string
-          enum: [active, completed]
-        startedAt:
-          type: string
-          format: date-time
-        endedAt:
-          type: string
-          format: date-time
-          nullable: true
-
-    BillingSummary:
-      type: object
-      required: [currency, totalCharged, paymentCount]
-      properties:
-        currency:
-          type: string
-          example: GBP
-        totalCharged:
-          type: number
-          format: float
-        paymentCount:
-          type: integer
-          minimum: 0
-
-    UserDashboardResponse:
-      type: object
-      required: [profile, recentRides, billingSummary]
-      properties:
-        profile:
-          $ref: '#/components/schemas/UserProfile'
-        recentRides:
-          type: array
-          items:
-            $ref: '#/components/schemas/RideSummaryItem'
-        billingSummary:
-          $ref: '#/components/schemas/BillingSummary'
+  responses:
+    BadRequest:
+      $ref: './components/common.yaml#/components/responses/BadRequest'
+    Unauthorized:
+      $ref: './components/common.yaml#/components/responses/Unauthorized'
+    Forbidden:
+      $ref: './components/common.yaml#/components/responses/Forbidden'
+    NotFound:
+      $ref: './components/common.yaml#/components/responses/NotFound'

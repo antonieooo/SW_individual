@@ -129,30 +129,24 @@ function requireInternalAuth(req, res, next) {
   return next();
 }
 
-async function loadDailyReport(date) {
-  return callInternalService({
+const loadDailyReport = (date) =>
+  callInternalService({
     url: `${serviceUrls.database}/internal/db/analytics/daily-usage?date=${date}`,
     method: "GET",
     audience: "database-cluster-service",
     scopes: ["db:analytics:read"],
-    headers: {
-      "x-db-credential": dbCredential
-    }
+    headers: { "x-db-credential": dbCredential }
   });
-}
 
-async function refreshDailyReport(date) {
-  return callInternalService({
+const refreshDailyReport = (date) =>
+  callInternalService({
     url: `${serviceUrls.database}/internal/db/analytics/refresh`,
     method: "POST",
     body: { date },
     audience: "database-cluster-service",
     scopes: ["db:analytics:refresh"],
-    headers: {
-      "x-db-credential": dbCredential
-    }
+    headers: { "x-db-credential": dbCredential }
   });
-}
 
 function isValidDateString(value) {
   if (typeof value !== "string") {

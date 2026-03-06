@@ -191,14 +191,6 @@ function sanitizePayment(payment) {
   };
 }
 
-function isNonEmptyString(value) {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function isSafeIdentifier(value) {
-  return typeof value === "string" && /^[A-Za-z0-9._:-]+$/.test(value);
-}
-
 function isValidUserId(value) {
   return typeof value === "string" && /^[um]-[A-Za-z0-9._:-]+$/.test(value);
 }
@@ -209,6 +201,10 @@ function isValidRideId(value) {
 
 function isValidPaymentBindingId(value) {
   return typeof value === "string" && /^paybind-[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isValidPaymentId(value) {
+  return typeof value === "string" && /^pay-[A-Za-z0-9._:-]+$/.test(value);
 }
 
 function isValidIdempotencyKey(value) {
@@ -236,6 +232,35 @@ function hasUnexpectedQueryParams(req, allowedKeys) {
   return getQueryKeys(req).some((key) => !key || !allowed.has(key));
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function ensureNoQueryParams(req, res) {
+  if (!hasUnexpectedQueryParams(req, [])) {
+    return true;
+  }
+  errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  return false;
+}
+
+function ensureObjectPayload(res, payload, code, message) {
+  if (isPlainObject(payload)) {
+    return true;
+  }
+  errorResponse(res, 400, code, message);
+  return false;
+}
+
+function ensurePayloadKeys(res, payload, allowedKeys, code, message) {
+  const allowed = new Set(allowedKeys);
+  if (Object.keys(payload).every((key) => allowed.has(key))) {
+    return true;
+  }
+  errorResponse(res, 400, code, message);
+  return false;
+}
+
 app.get("/status", (_req, res) => {
   res.json({
     status: "ok",
@@ -245,22 +270,23 @@ app.get("/status", (_req, res) => {
 });
 
 app.post("/internal/payments/charge", requireInternalAuth, async (req, res) => {
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  if (!ensureNoQueryParams(req, res)) {
+    return;
   }
   const payload = req.body;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return errorResponse(res, 400, "INVALID_CHARGE_PAYLOAD", "Charge payload must be an object");
+  if (!ensureObjectPayload(res, payload, "INVALID_CHARGE_PAYLOAD", "Charge payload must be an object")) {
+    return;
   }
-  const allowedKeys = ["userId", "rideId", "amount", "currency", "paymentBindingId"];
-  const hasUnsupportedKey = Object.keys(payload).some((key) => !allowedKeys.includes(key));
-  if (hasUnsupportedKey) {
-    return errorResponse(
+  if (
+    !ensurePayloadKeys(
       res,
-      400,
+      payload,
+      ["userId", "rideId", "amount", "currency", "paymentBindingId"],
       "INVALID_CHARGE_PAYLOAD",
       "Only userId, rideId, amount, currency and paymentBindingId are allowed"
-    );
+    )
+  ) {
+    return;
   }
 
   const { userId, rideId, amount, currency, paymentBindingId } = payload;
@@ -342,8 +368,11 @@ app.post("/internal/payments/charge", requireInternalAuth, async (req, res) => {
 });
 
 app.get("/internal/payments/:paymentId", requireInternalAuth, async (req, res) => {
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  if (!isValidPaymentId(req.params.paymentId)) {
+    return errorResponse(res, 400, "INVALID_PATH", "paymentId must match expected ID format");
+  }
+  if (!ensureNoQueryParams(req, res)) {
+    return;
   }
   try {
     const payment = await dbGet("payments", req.params.paymentId);
@@ -371,8 +400,8 @@ app.get("/internal/users/:userId/billing-summary", requireInternalAuth, async (r
   if (!isValidUserId(userId)) {
     return errorResponse(res, 400, "INVALID_PATH", "userId must match expected ID format");
   }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+  if (!ensureNoQueryParams(req, res)) {
+    return;
   }
   const actor = req.auth.actor;
 

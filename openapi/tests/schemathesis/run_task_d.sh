@@ -35,7 +35,11 @@ ensure_service_up() {
   local i
 
   for ((i = 1; i <= attempts; i++)); do
-    if curl -fsS "$base_url/status" >/dev/null 2>&1; then
+    if [[ "$base_url" == https:* ]]; then
+      if curl -k -fsS "$base_url/status" >/dev/null 2>&1; then
+        return 0
+      fi
+    elif curl -fsS "$base_url/status" >/dev/null 2>&1; then
       return 0
     fi
     sleep "$sleep_seconds"
@@ -74,6 +78,8 @@ run_case() {
     "$base_url"
     --exclude-checks
     "unsupported_method,negative_data_rejection"
+    --warnings
+    "off"
     --header
     "Authorization: Bearer $token"
     --header
@@ -84,6 +90,10 @@ run_case() {
     cmd+=(--header "$1")
     shift
   done
+
+  if [[ "$base_url" == https:* ]]; then
+    cmd+=(--tls-verify false)
+  fi
 
   if [[ -n "${SCHEMATHESIS_EXTRA_ARGS:-}" ]]; then
     # shellcheck disable=SC2206
@@ -99,7 +109,7 @@ run_case() {
 }
 
 echo "Checking service readiness..."
-ensure_service_up "http://localhost:3000" "api-gateway-service"
+ensure_service_up "https://localhost:3000" "api-gateway-service"
 ensure_service_up "http://localhost:3001" "user-service"
 ensure_service_up "http://localhost:3002" "ride-service"
 ensure_service_up "http://localhost:3003" "bike-inventory-service"
@@ -110,8 +120,8 @@ ensure_service_up "http://localhost:3006" "database-cluster-service"
 run_case \
   "api-gateway-service" \
   "$ROOT_DIR/openapi/api-gateway-service.yaml" \
-  "http://localhost:3000" \
-  "$(build_user_token u-100 user)" \
+  "https://localhost:3000" \
+  "$(build_user_token m-900 maintainer)" \
   "x-api-key: partner-a-demo-key" \
   "x-device-cert: device-cert-taskd-001" \
   "x-idempotency-key: taskd-gateway-001"

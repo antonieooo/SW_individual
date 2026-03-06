@@ -221,6 +221,13 @@ function hasUnexpectedQueryParams(req, allowedKeys) {
   return getQueryKeys(req).some((key) => !key || !allowed.has(key));
 }
 
+function rejectUnexpectedQueryParams(req, res, next) {
+  if (!hasUnexpectedQueryParams(req, [])) {
+    return next();
+  }
+  return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
+}
+
 app.get("/status", (_req, res) => {
   res.json({
     status: "ok",
@@ -229,12 +236,11 @@ app.get("/status", (_req, res) => {
   });
 });
 
-app.get("/internal/bikes/:bikeId", requireInternalAuth, async (req, res) => {
+app.use("/internal", requireInternalAuth, rejectUnexpectedQueryParams);
+
+app.get("/internal/bikes/:bikeId", async (req, res) => {
   if (!isValidBikeId(req.params.bikeId)) {
     return errorResponse(res, 400, "INVALID_PATH", "bikeId must match expected bike ID format");
-  }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
   }
 
   try {
@@ -249,13 +255,10 @@ app.get("/internal/bikes/:bikeId", requireInternalAuth, async (req, res) => {
   }
 });
 
-app.post("/internal/bikes/:bikeId/reserve", requireInternalAuth, async (req, res) => {
+app.post("/internal/bikes/:bikeId/reserve", async (req, res) => {
   const { bikeId } = req.params;
   if (!isValidBikeId(bikeId)) {
     return errorResponse(res, 400, "INVALID_PATH", "bikeId must match expected bike ID format");
-  }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
   }
   const payload = req.body;
   if (payload !== undefined && (payload === null || typeof payload !== "object" || Array.isArray(payload))) {
@@ -293,13 +296,10 @@ app.post("/internal/bikes/:bikeId/reserve", requireInternalAuth, async (req, res
   }
 });
 
-app.post("/internal/bikes/:bikeId/release", requireInternalAuth, async (req, res) => {
+app.post("/internal/bikes/:bikeId/release", async (req, res) => {
   const { bikeId } = req.params;
   if (!isValidBikeId(bikeId)) {
     return errorResponse(res, 400, "INVALID_PATH", "bikeId must match expected bike ID format");
-  }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
   }
   const payload = req.body;
   if (payload !== undefined && (payload === null || typeof payload !== "object" || Array.isArray(payload))) {
@@ -344,10 +344,7 @@ app.post("/internal/bikes/:bikeId/release", requireInternalAuth, async (req, res
   }
 });
 
-app.post("/internal/device-events", requireInternalAuth, async (req, res) => {
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
-  }
+app.post("/internal/device-events", async (req, res) => {
   const deviceCert = req.headers["x-device-cert"];
   if (!isAllowedDeviceCert(deviceCert)) {
     return errorResponse(res, 401, "DEVICE_CERT_REQUIRED", "A valid x-device-cert header is required");
@@ -440,12 +437,9 @@ app.post("/internal/device-events", requireInternalAuth, async (req, res) => {
   }
 });
 
-app.post("/internal/admin/bikes/:bikeId/override-lock", requireInternalAuth, async (req, res) => {
+app.post("/internal/admin/bikes/:bikeId/override-lock", async (req, res) => {
   if (!isValidBikeId(req.params.bikeId)) {
     return errorResponse(res, 400, "INVALID_PATH", "bikeId must match expected bike ID format");
-  }
-  if (hasUnexpectedQueryParams(req, [])) {
-    return errorResponse(res, 400, "INVALID_QUERY", "Query parameters are not supported for this endpoint");
   }
 
   const actor = req.auth.actor;

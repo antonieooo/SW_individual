@@ -2,24 +2,22 @@ openapi: 3.0.3
 info:
   title: Partner Analytics Service API
   version: 1.0.0
-  description: Aggregated read-only analytics for trusted partner access through gateway.
 servers:
   - url: http://localhost:3005
+
 paths:
   /status:
     get:
-      summary: Service health status
       responses:
         '200':
-          description: Partner analytics service is healthy
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ServiceStatus'
+                $ref: './components/common.yaml#/components/schemas/ServiceStatus'
 
   /internal/reports/daily-usage:
     get:
-      summary: Fetch one pre-aggregated daily usage report
       security:
         - internalMtls: []
           serviceJwt: []
@@ -32,112 +30,33 @@ paths:
             format: date
       responses:
         '200':
-          description: Report returned
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DailyUsageReport'
+                $ref: './components/common.yaml#/components/schemas/DailyUsageReport'
         '400':
-          description: Invalid date query parameter
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing or invalid internal authentication
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Report does not exist for date
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '502':
-          description: Internal report retrieval or refresh failure
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/UpstreamError'
 
 components:
   securitySchemes:
     serviceJwt:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+      $ref: './components/common.yaml#/components/securitySchemes/serviceJwt'
     internalMtls:
-      type: apiKey
-      in: header
-      name: x-internal-mtls
-      description: Local development simulation for mTLS.
+      $ref: './components/common.yaml#/components/securitySchemes/internalMtls'
 
-  schemas:
-    ServiceStatus:
-      type: object
-      required: [status, service, timestamp]
-      properties:
-        status:
-          type: string
-          example: ok
-        service:
-          type: string
-          example: partner-analytics-service
-        timestamp:
-          type: string
-          format: date-time
-
-    ErrorResponse:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message]
-          properties:
-            code:
-              type: string
-            message:
-              type: string
-            details:
-              nullable: true
-              oneOf:
-                - type: object
-                - type: array
-                  items: {}
-                - type: string
-
-    DailyUsageReport:
-      type: object
-      required:
-        - date
-        - totalRides
-        - uniqueUsers
-        - activeBikes
-        - generatedAt
-        - minimumAggregationThreshold
-        - suppressed
-      properties:
-        date:
-          type: string
-          format: date
-        totalRides:
-          type: integer
-          minimum: 0
-        uniqueUsers:
-          type: integer
-          minimum: 0
-        activeBikes:
-          type: integer
-          minimum: 0
-        generatedAt:
-          type: string
-          format: date-time
-        minimumAggregationThreshold:
-          type: integer
-          minimum: 1
-        suppressed:
-          type: boolean
-          description: True when counts are below threshold and privacy-protected values are returned.
+  responses:
+    BadRequest:
+      $ref: './components/common.yaml#/components/responses/BadRequest'
+    Unauthorized:
+      $ref: './components/common.yaml#/components/responses/Unauthorized'
+    NotFound:
+      $ref: './components/common.yaml#/components/responses/NotFound'
+    UpstreamError:
+      $ref: './components/common.yaml#/components/responses/UpstreamError'

@@ -35,14 +35,14 @@ docker compose up --build
 
 1. Login as rider:
 ```bash
-curl -s -X POST http://localhost:3000/api/v1/auth/login \
+curl -k -s -X POST https://localhost:3000/api/v1/auth/login \
   -H 'content-type: application/json' \
   -d '{"email":"alice@citybike.example","password":"alice123"}'
 ```
 
 2. Start ride:
 ```bash
-curl -s -X POST http://localhost:3000/api/v1/rides/start \
+curl -k -s -X POST https://localhost:3000/api/v1/rides/start \
   -H "authorization: Bearer <TOKEN_FROM_LOGIN>" \
   -H 'content-type: application/json' \
   -H 'x-idempotency-key: demo-start-001' \
@@ -51,7 +51,7 @@ curl -s -X POST http://localhost:3000/api/v1/rides/start \
 
 3. Partner analytics:
 ```bash
-curl -s "http://localhost:3000/api/v1/partner/reports/daily-usage?date=$(date +%F)" \
+curl -k -s "https://localhost:3000/api/v1/partner/reports/daily-usage?date=$(date +%F)" \
   -H 'x-api-key: partner-a-demo-key'
 ```
 

@@ -103,11 +103,18 @@ jobs:
           wait_for_status() {
             local service_name="$1"
             local port="$2"
-            local max_attempts="${3:-90}"
-            local sleep_seconds="${4:-2}"
+            local scheme="${3:-http}"
+            local max_attempts="${4:-90}"
+            local sleep_seconds="${5:-2}"
+            local status_url="${scheme}://localhost:${port}/status"
 
             for attempt in $(seq 1 "$max_attempts"); do
-              if curl -fsS "http://localhost:${port}/status" >/dev/null 2>&1; then
+              if [[ "$scheme" == "https" ]]; then
+                if curl -k -fsS "$status_url" >/dev/null 2>&1; then
+                  echo "ready: ${service_name} on ${port} (attempt ${attempt})"
+                  return 0
+                fi
+              elif curl -fsS "$status_url" >/dev/null 2>&1; then
                 echo "ready: ${service_name} on ${port} (attempt ${attempt})"
                 return 0
               fi
@@ -120,7 +127,7 @@ jobs:
             return 1
           }
 
-          wait_for_status api-gateway-service 3000
+          wait_for_status api-gateway-service 3000 https
           wait_for_status user-service 3001
           wait_for_status ride-service 3002
           wait_for_status bike-inventory-service 3003
@@ -132,6 +139,11 @@ jobs:
         run: |
           set -euo pipefail
           bash openapi/tests/schemathesis/run_auth_negative.sh
+
+      - name: Run negative payload checks
+        run: |
+          set -euo pipefail
+          bash openapi/tests/schemathesis/run_negative_data.sh
 
       - name: Run full Schemathesis task suite
         run: |
